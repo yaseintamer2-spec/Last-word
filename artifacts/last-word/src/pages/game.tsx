@@ -5,6 +5,11 @@ import { Heart, Play, Home, X, Zap } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
+import { AdMob, RewardAdPluginEvents, AdMobRewardItem } from "@capacitor-community/admob";
+
+// ── Ad Unit IDs ───────────────────────────────────────────────────────────────
+const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
+const INTERSTITIAL_AD_ID = "ca-app-pub-1445407957198527/6095352248"; // between rounds
 
 // ── Word pool ─────────────────────────────────────────────────────────────────
 type WordEntry = { word: string; hint: string };
@@ -1417,16 +1422,78 @@ function PauseOverlay({ onResume }: { onResume: () => void }) {
 }
 
 // ── Interstitial Ad ───────────────────────────────────────────────────────────
+// Shows a REAL full-screen Google interstitial ad (ca-app-pub-1445407957198527/6095352248)
+// Falls back to a 5-second loading screen if AdMob isn't available (e.g. in browser preview)
 function InterstitialAd({ onDone }: { onDone: () => void }) {
-  const [t, setT] = useState(5);
-  const [canSkip, setCanSkip] = useState(false);
+  const [fallback, setFallback] = useState(false);
+  const [t, setT]               = useState(5);
+  const [canSkip, setCanSkip]   = useState(false);
+  const called                  = useRef(false);
 
   useEffect(() => {
+    if (called.current) return;
+    called.current = true;
+
+    async function showInterstitial() {
+      try {
+        // Prepare the ad (loads it into memory)
+        await AdMob.prepareInterstitial({
+          adId: INTERSTITIAL_AD_ID,
+          isTesting: false,
+        });
+
+        // Listen for when the ad is dismissed — then call onDone
+        await AdMob.addListener("interstitialAdLoaded", async () => {
+          await AdMob.showInterstitial();
+        });
+
+        await AdMob.addListener("interstitialAdFailedToLoad", () => {
+          // Ad failed — use fallback UI
+          setFallback(true);
+        });
+
+        await AdMob.addListener("interstitialAdDismissed", () => {
+          onDone();
+        });
+
+      } catch {
+        // Not on a device (browser preview) — show fallback
+        setFallback(true);
+      }
+    }
+
+    showInterstitial();
+  }, [onDone]);
+
+  // Fallback countdown UI (shown in browser or if ad fails)
+  useEffect(() => {
+    if (!fallback) return;
     if (t <= 0) { setCanSkip(true); return; }
     const timer = setTimeout(() => setT((v) => v - 1), 1000);
     return () => clearTimeout(timer);
-  }, [t]);
+  }, [fallback, t]);
 
+  if (!fallback) {
+    // Real ad is loading/showing — show a brief loading state
+    return (
+      <motion.div
+        key="interstitial-loading"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+        style={{ background: "rgba(3,5,14,0.97)" }}
+      >
+        <div className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Loading ad...</div>
+        <motion.div
+          className="w-8 h-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+        />
+      </motion.div>
+    );
+  }
+
+  // Fallback UI
   return (
     <motion.div
       key="interstitial"
@@ -1436,59 +1503,33 @@ function InterstitialAd({ onDone }: { onDone: () => void }) {
       style={{ background: "rgba(3,5,14,0.97)" }}
     >
       <div className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Advertisement</div>
-
-      {/* Ad creative */}
       <div
         className="w-full max-w-sm rounded-3xl overflow-hidden relative flex flex-col items-center justify-center gap-4 py-10 px-6"
         style={{
           background: "linear-gradient(145deg, #0d1b35 0%, #121226 60%, #0d1b35 100%)",
           border: "1px solid rgba(34,211,238,0.18)",
-          boxShadow: "0 0 60px rgba(34,211,238,0.08)",
         }}
       >
-        {/* Decorative glow */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-20 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div
-          className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black text-white"
-          style={{ background: "linear-gradient(135deg, #22d3ee 0%, #7c3aed 100%)" }}
-        >
-          LW
-        </div>
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black text-white"
+          style={{ background: "linear-gradient(135deg, #22d3ee 0%, #7c3aed 100%)" }}>LW</div>
         <div className="text-center">
-          <div className="text-2xl font-black font-display text-white">Last Word Pro</div>
+          <div className="text-2xl font-black font-display text-white">Last Word</div>
           <div className="text-sm text-white/50 mt-1">The ultimate word game</div>
         </div>
-        <div
-          className="px-6 py-2 rounded-full text-sm font-bold text-black"
-          style={{ background: "linear-gradient(90deg, #22d3ee, #38bdf8)" }}
-        >
-          Play for Free
-        </div>
-
-        {/* Progress bar */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
-          <motion.div
-            className="h-full rounded-full"
-            initial={{ width: "0%" }}
-            animate={{ width: "100%" }}
+          <motion.div className="h-full rounded-full" initial={{ width: "0%" }} animate={{ width: "100%" }}
             transition={{ duration: 5, ease: "linear" }}
-            style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }}
-          />
+            style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }} />
         </div>
       </div>
-
       {canSkip ? (
-        <Button
-          onClick={onDone}
-          className="h-11 px-8 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-2xl font-bold transition-colors"
-        >
+        <Button onClick={onDone}
+          className="h-11 px-8 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-2xl font-bold">
           <X className="mr-2 h-4 w-4" /> Close Ad
         </Button>
       ) : (
-        <div className="text-xs font-mono text-white/30 tabular-nums">
-          Closes in {t}s
-        </div>
+        <div className="text-xs font-mono text-white/30 tabular-nums">Closes in {t}s</div>
       )}
     </motion.div>
   );
@@ -1588,15 +1629,84 @@ function MatchOverScreen({
 }
 
 // ── Ad Revive Modal ───────────────────────────────────────────────────────────
+// Shows a REAL Google rewarded ad (ca-app-pub-1445407957198527/6949268913)
+// Player MUST watch it fully to earn the revive — onRevive only fires on reward
+// Falls back to a 5-second timer UI if AdMob isn't available
 function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onRevive: () => void }) {
-  const [t, setT] = useState(5);
+  const [fallback, setFallback] = useState(false);
+  const [t, setT]               = useState(5);
+  const called                  = useRef(false);
 
   useEffect(() => {
+    if (called.current) return;
+    called.current = true;
+
+    async function showRewarded() {
+      try {
+        // Prepare the rewarded ad
+        await AdMob.prepareRewardVideoAd({
+          adId: REWARDED_AD_ID,
+          isTesting: false,
+        });
+
+        // Reward earned = player watched the full ad → grant revive
+        await AdMob.addListener(RewardAdPluginEvents.Rewarded, (_reward: AdMobRewardItem) => {
+          onRevive();
+        });
+
+        // Ad dismissed without earning reward (skipped early) → decline
+        await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+          // Only decline if reward wasn't already granted
+          // (Dismissed fires after Rewarded, so onRevive may have already been called)
+        });
+
+        await AdMob.addListener("rewardVideoAdFailedToLoad", () => {
+          setFallback(true);
+        });
+
+        await AdMob.showRewardVideoAd();
+
+      } catch {
+        // Not on device (browser preview) — show fallback UI
+        setFallback(true);
+      }
+    }
+
+    showRewarded();
+  }, [onRevive]);
+
+  // Fallback countdown
+  useEffect(() => {
+    if (!fallback) return;
     if (t <= 0) return;
     const timer = setTimeout(() => setT((v) => v - 1), 1000);
     return () => clearTimeout(timer);
-  }, [t]);
+  }, [fallback, t]);
 
+  if (!fallback) {
+    // Real ad is loading — show spinner
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4"
+        style={{ background: "rgba(3,5,14,0.88)", backdropFilter: "blur(10px)" }}
+      >
+        <div className="text-sm font-mono text-white/40">Loading ad...</div>
+        <motion.div
+          className="w-8 h-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+        />
+        <Button variant="outline" className="mt-4 h-10 px-6 border-white/12 rounded-2xl text-sm"
+          onClick={onDecline}>
+          Cancel
+        </Button>
+      </motion.div>
+    );
+  }
+
+  // Fallback UI
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1609,55 +1719,27 @@ function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onReviv
           <h3 className="text-2xl font-black font-display mb-1">Continue?</h3>
           <p className="text-sm text-muted-foreground">Watch a short ad to get 1 life back.</p>
         </div>
-
-        {/* Ad visual */}
-        <div
-          className="w-full aspect-video rounded-2xl relative overflow-hidden flex flex-col items-center justify-center gap-3"
-          style={{
-            background: "linear-gradient(145deg, #0d1b35, #121226, #0d1b35)",
-            border: "1px solid rgba(34,211,238,0.15)",
-          }}
-        >
+        <div className="w-full aspect-video rounded-2xl relative overflow-hidden flex flex-col items-center justify-center gap-3"
+          style={{ background: "linear-gradient(145deg, #0d1b35, #121226, #0d1b35)", border: "1px solid rgba(34,211,238,0.15)" }}>
           <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-white text-lg"
-            style={{ background: "linear-gradient(135deg, #22d3ee, #7c3aed)" }}>
-            LW
-          </div>
+            style={{ background: "linear-gradient(135deg, #22d3ee, #7c3aed)" }}>LW</div>
           <p className="text-white/60 text-sm font-mono">Sponsored</p>
-
-          {/* countdown badge */}
           {t > 0 && (
-            <div className="absolute bottom-3 right-3 bg-black/70 px-2.5 py-1 rounded-lg text-xs font-mono border border-white/10 tabular-nums">
-              {t}s
-            </div>
+            <div className="absolute bottom-3 right-3 bg-black/70 px-2.5 py-1 rounded-lg text-xs font-mono border border-white/10 tabular-nums">{t}s</div>
           )}
-
-          {/* progress */}
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
-            <motion.div
-              className="h-full"
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
+            <motion.div className="h-full" initial={{ width: "0%" }} animate={{ width: "100%" }}
               transition={{ duration: 5, ease: "linear" }}
-              style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }}
-            />
+              style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }} />
           </div>
         </div>
-
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1 h-11 border-white/12 rounded-2xl"
-            onClick={onDecline}
-            data-testid="button-decline-revive"
-          >
+          <Button variant="outline" className="flex-1 h-11 border-white/12 rounded-2xl"
+            onClick={onDecline} data-testid="button-decline-revive">
             <X className="mr-2 h-4 w-4" /> No thanks
           </Button>
-          <Button
-            className="flex-1 h-11 bg-cyan-400 text-black font-bold hover:bg-cyan-300 rounded-2xl"
-            disabled={t > 0}
-            onClick={onRevive}
-            data-testid="button-accept-revive"
-          >
+          <Button className="flex-1 h-11 bg-cyan-400 text-black font-bold hover:bg-cyan-300 rounded-2xl"
+            disabled={t > 0} onClick={onRevive} data-testid="button-accept-revive">
             {t > 0 ? `${t}s...` : "Revive!"}
           </Button>
         </div>
