@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "OGccZK79sQ8cvSksXPv7u"
+uri = "file://artifacts/last-word/public/mode-duel.png"
+type = "image"
+title = "duel mode art"
+
+[[generated]]
+id = "lB_e2voFvjL5Zm1v9oa2G"
+uri = "file://artifacts/last-word/public/mode-trio.png"
+type = "image"
+title = "trio mode art"
+
+[[generated]]
+id = "ElulFl40JJIudj0cO7ivh"
+uri = "file://artifacts/last-word/public/mode-chaos.png"
+type = "image"
+title = "chaos mode art"
+
+[[generated]]
+id = "A8amQ1kB1UW2UaWSiW-eH"
+uri = "file://artifacts/last-word/public/logo.png"
+type = "image"
+title = "last word logo"
