@@ -1,7 +1,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.yourname.lastword',
+  appId: 'com.lastword.app',
   appName: 'Last Word',
   webDir: 'artifacts/last-word/dist',
 

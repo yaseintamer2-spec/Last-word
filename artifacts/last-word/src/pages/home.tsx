@@ -167,7 +167,7 @@ function GameDemo() {
                 backgroundColor: bg,
                 scale: isNext ? [1, 1.08, 1] : 1,
               }}
-              transition={{ duration: 0.15, repeat: isNext ? Infinity : 0, repeatDuration: 0.9 }}
+              transition={{ duration: 0.15, repeat: isNext ? Infinity : 0, repeatDelay: 0.9 }}
               className="flex items-center justify-center border-2 rounded-xl font-mono font-black"
               style={{
                 width: "2.6rem",

@@ -5,7 +5,7 @@ import { Heart, Play, Home, X, Zap } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
-import { AdMob, RewardAdPluginEvents, AdMobRewardItem } from "@capacitor-community/admob";
+import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvents } from "@capacitor-community/admob";
 
 // ── Ad Unit IDs ───────────────────────────────────────────────────────────────
 const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
@@ -1443,16 +1443,16 @@ function InterstitialAd({ onDone }: { onDone: () => void }) {
         });
 
         // Listen for when the ad is dismissed — then call onDone
-        await AdMob.addListener("interstitialAdLoaded", async () => {
+        await AdMob.addListener(InterstitialAdPluginEvents.Loaded, async () => {
           await AdMob.showInterstitial();
         });
 
-        await AdMob.addListener("interstitialAdFailedToLoad", () => {
+        await AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, () => {
           // Ad failed — use fallback UI
           setFallback(true);
         });
 
-        await AdMob.addListener("interstitialAdDismissed", () => {
+        await AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => {
           onDone();
         });
 
@@ -1660,7 +1660,7 @@ function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onReviv
           // (Dismissed fires after Rewarded, so onRevive may have already been called)
         });
 
-        await AdMob.addListener("rewardVideoAdFailedToLoad", () => {
+        await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, () => {
           setFallback(true);
         });
 
