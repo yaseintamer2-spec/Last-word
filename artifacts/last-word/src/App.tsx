@@ -13,6 +13,7 @@ import Friends from '@/pages/friends';
 import Lobby from '@/pages/lobby';
 import Leaderboard from '@/pages/leaderboard';
 import Game from '@/pages/game';
+import Daily from '@/pages/daily';
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/lobby" component={Lobby} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/game" component={Game} />
+      <Route path="/daily" component={Daily} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, Play, Home, X, Zap } from "lucide-react";
+import { Heart, Play, Home, X, Zap, Share2 } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvents } from "@capacitor-community/admob";
+import { AdMob, RewardAdPluginEvents, AdMobRewardItem } from "@capacitor-community/admob";
+import { SFX } from "@/lib/sounds";
+import { Vibrate } from "@/lib/haptics";
+import { tryUnlock } from "@/lib/achievements";
 
 // ── Ad Unit IDs ───────────────────────────────────────────────────────────────
 const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
@@ -883,14 +887,30 @@ export default function Game() {
 
   // ── doEndGame (solo) ─────────────────────────────────────────────────────────
   const doEndGame = useCallback(() => {
+    SFX.gameOver();
+    Vibrate.error();
     setGameState("GAME_OVER");
-    setScores((prev) => ({
-      ...prev,
-      highScore:    scoreRef.current > prev.highScore ? scoreRef.current : prev.highScore,
-      totalPoints:  prev.totalPoints + scoreRef.current,
-      gamesPlayed:  prev.gamesPlayed + 1,
-      roundRecord:  Math.max(prev.roundRecord, roundRef.current),
-    }));
+    setScores((prev) => {
+      const isNewBest = scoreRef.current > prev.highScore;
+      if (isNewBest) SFX.newBest();
+      const newGames = prev.gamesPlayed + 1;
+      // Achievements
+      tryUnlock("first_blood");
+      if (newGames >= 10) tryUnlock("games_10");
+      if (scoreRef.current >= 5000)  tryUnlock("score_5k");
+      if (scoreRef.current >= 20000) tryUnlock("score_20k");
+      if (roundRef.current >= 5)  tryUnlock("speed_5");
+      if (roundRef.current >= 15) tryUnlock("speed_15");
+      if (roundRef.current >= 30) tryUnlock("speed_30");
+      if (roundRef.current >= 31) tryUnlock("insane_entry");
+      return {
+        ...prev,
+        highScore:   isNewBest ? scoreRef.current : prev.highScore,
+        totalPoints: prev.totalPoints + scoreRef.current,
+        gamesPlayed: newGames,
+        roundRecord: Math.max(prev.roundRecord, roundRef.current),
+      };
+    });
   }, [setScores]);
 
   // ── handleLifeLoss ───────────────────────────────────────────────────────────
@@ -925,7 +945,8 @@ export default function Game() {
   // ── Countdown ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (gameState !== "COUNTDOWN" || paused) return;
-    if (countdown <= 0) { setGameState("TYPING"); return; }
+    if (countdown <= 0) { SFX.go(); setGameState("TYPING"); return; }
+    SFX.countdown();
     const t = setTimeout(() => setCountdown((c) => c - 1), 850);
     return () => clearTimeout(t);
   }, [gameState, countdown, paused]);
@@ -945,7 +966,7 @@ export default function Game() {
     const speed = (isMultiplayer && mpRoundRef.current >= 8)
       ? Math.floor(tierRef.current.speed * 0.68)
       : tierRef.current.speed;
-    typingTimer.current = setTimeout(() => setRevealed((r) => r + 1), speed);
+    typingTimer.current = setTimeout(() => setRevealed((r) => { SFX.tick(); return r + 1; }), speed);
     return clearTyping;
   }, [gameState, revealed, entry.word, paused, handleLifeLoss, isMultiplayer]);
 
@@ -953,6 +974,8 @@ export default function Game() {
   const handleStop = useCallback(() => {
     if (gameState !== "TYPING" || revealed >= entry.word.length) return;
     clearTyping();
+    SFX.stop();
+    Vibrate.medium();
     setShowHint(false);
     setGameState("GUESSING");
   }, [gameState, revealed, entry.word]);
@@ -973,11 +996,18 @@ export default function Game() {
               const pts    = calcPoints(revealed, entry.word.length, tierRef.current.mult);
               const ratio  = revealed / entry.word.length;
               const praise = getPraise(ratio);
+              SFX.correct();
+              Vibrate.success();
+              // Achievements
+              tryUnlock("first_blood");
+              if (ratio === 0) tryUnlock("psychic");
               setFeedback({ kind: "correct", points: pts, praise });
               setScore((s) => { scoreRef.current = s + pts; return s + pts; });
               setGameState("FEEDBACK");
               setTimeout(() => nextRound(), 1400);
             } else {
+              SFX.wrong();
+              Vibrate.error();
               handleLifeLoss("wrong");
             }
           }
@@ -1296,8 +1326,21 @@ export default function Game() {
                 )}
                 <div className="flex flex-col w-full gap-2">
                   <Button
+                    variant="outline"
+                    className="w-full h-11 font-bold border-white/12 rounded-2xl gap-2"
+                    onClick={() => {
+                      SFX.tap();
+                      tryUnlock("shared");
+                      const text = `🎯 Last Word\n⭐ Score: ${score.toLocaleString()}\n🏆 Round: ${round - 1}\nCan you beat me?`;
+                      if (navigator.share) navigator.share({ title: "Last Word", text }).catch(() => {});
+                      else if (navigator.clipboard) navigator.clipboard.writeText(text);
+                    }}
+                  >
+                    <Share2 className="h-4 w-4" /> Share Score
+                  </Button>
+                  <Button
                     className="w-full h-12 font-bold bg-cyan-400 text-black hover:bg-cyan-300 rounded-2xl"
-                    onClick={restartGame}
+                    onClick={() => { SFX.tap(); restartGame(); }}
                     data-testid="button-play-again"
                   >
                     <Play className="mr-2 h-4 w-4 fill-current" /> Play Again
@@ -1305,7 +1348,7 @@ export default function Game() {
                   <Button
                     variant="outline"
                     className="w-full h-12 font-bold border-white/12 rounded-2xl"
-                    onClick={() => setLocation("/")}
+                    onClick={() => { SFX.tap(); setLocation("/"); }}
                     data-testid="button-main-menu"
                   >
                     <Home className="mr-2 h-4 w-4" /> Home

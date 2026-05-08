@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { MoreVertical, Trophy, Users, Play, Swords, X, Check, Camera, Star } from "lucide-react";
+import { MoreVertical, Trophy, Users, Play, Swords, X, Check, Camera, Star, Calendar, Award, Flame } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/layout";
+import { isTodayCompleted, getDailyState } from "@/lib/daily";
+import { getUnlocked, ALL_ACHIEVEMENTS } from "@/lib/achievements";
+import { SFX } from "@/lib/sounds";
 
 // ── Floating letter particles ─────────────────────────────────────────────────
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -358,6 +361,10 @@ export default function Home() {
 
   const acceptedCount = friends.filter((f) => f.status === "accepted").length;
   const incomingCount = friends.filter((f) => f.status === "pending_received").length;
+  const dailyDone     = isTodayCompleted();
+  const dailyStreak   = getDailyState()?.streak ?? 0;
+  const unlockedCount = getUnlocked().length;
+  const [showAchievements, setShowAchievements] = useState(false);
 
   return (
     <Layout>
@@ -471,17 +478,49 @@ export default function Home() {
 
             <motion.button
               whileTap={{ scale: 0.96 }}
-              onClick={() => setLocation("/lobby")}
+              onClick={() => { SFX.tap(); setLocation("/lobby"); }}
               className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
-              style={{
-                borderColor: "rgba(139,92,246,0.4)",
-                background: "rgba(139,92,246,0.07)",
-                color: "#c4b5fd",
-              }}
+              style={{ borderColor: "rgba(139,92,246,0.4)", background: "rgba(139,92,246,0.07)", color: "#c4b5fd" }}
               data-testid="button-multiplayer"
             >
               <Swords className="h-4 w-4" />
               MULTIPLAYER
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { SFX.tap(); setLocation("/daily"); }}
+              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2 relative"
+              style={{
+                borderColor: dailyDone ? "rgba(52,211,153,0.4)" : "rgba(251,191,36,0.4)",
+                background:  dailyDone ? "rgba(52,211,153,0.07)" : "rgba(251,191,36,0.07)",
+                color:       dailyDone ? "#34d399" : "#fbbf24",
+              }}
+              data-testid="button-daily"
+            >
+              <Calendar className="h-4 w-4" />
+              DAILY CHALLENGE
+              {dailyDone ? (
+                <span className="text-[10px] font-mono ml-1">✓</span>
+              ) : (
+                <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+              )}
+              {dailyStreak > 0 && (
+                <span className="flex items-center gap-0.5 text-orange-400 text-xs font-bold ml-1">
+                  <Flame className="h-3 w-3 fill-orange-400" />{dailyStreak}
+                </span>
+              )}
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { SFX.tap(); setShowAchievements(true); }}
+              className="w-full h-10 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
+              style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.5)" }}
+            >
+              <Award className="h-4 w-4" />
+              ACHIEVEMENTS
+              <span className="text-xs font-mono ml-1">{unlockedCount}/{ALL_ACHIEVEMENTS.length}</span>
             </motion.button>
           </motion.div>
 
@@ -592,6 +631,54 @@ export default function Home() {
                   <Check className="mr-2 h-4 w-4" /> Save
                 </Button>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ── Achievements modal ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showAchievements && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowAchievements(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+              className="w-full max-w-sm rounded-3xl p-5 shadow-2xl max-h-[80vh] overflow-y-auto"
+              style={{ background: "linear-gradient(145deg, hsl(234,25%,11%), hsl(234,25%,8%))", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg flex items-center gap-2" style={{ fontFamily: "Orbitron, sans-serif" }}>
+                  <Award className="h-5 w-5 text-yellow-400" /> Achievements
+                </h2>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-muted-foreground">{unlockedCount}/{ALL_ACHIEVEMENTS.length}</span>
+                  <button onClick={() => setShowAchievements(false)} className="text-muted-foreground hover:text-foreground p-1">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {ALL_ACHIEVEMENTS.map((a) => {
+                  const unlocked = getUnlocked().find((u) => u.id === a.id);
+                  return (
+                    <div key={a.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${unlocked ? "bg-white/5 border-white/12" : "bg-white/2 border-white/5 opacity-50"}`}>
+                      <span className="text-xl">{a.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-bold ${unlocked ? "text-white" : "text-muted-foreground"}`}>{a.title}</div>
+                        <div className="text-xs text-muted-foreground truncate">{a.desc}</div>
+                      </div>
+                      {unlocked && <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" />}
+                    </div>
+                  );
+                })}
+              </div>
             </motion.div>
           </motion.div>
         )}
