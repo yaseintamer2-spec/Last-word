@@ -72,6 +72,8 @@
     "vaul": "^1.1.2",
     "vite": "catalog:",
     "wouter": "^3.3.5",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@capacitor/haptics": "^6.0.0",
+    "@supabase/supabase-js": "^2.45.0"
   }
 }

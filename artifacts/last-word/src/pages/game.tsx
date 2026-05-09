@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, Play, Home, X, Zap, Share2 } from "lucide-react";
+import { Heart, Play, Home, X, Zap, Share2, Crown, Wifi } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
-import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvents } from "@capacitor-community/admob";
-import { AdMob, RewardAdPluginEvents, AdMobRewardItem } from "@capacitor-community/admob";
+import { AdMob, BannerAdOptions, BannerAdPosition, BannerAdSize, RewardAdPluginEvents, AdMobRewardItem } from "@capacitor-community/admob";
 import { SFX } from "@/lib/sounds";
 import { Vibrate } from "@/lib/haptics";
 import { tryUnlock } from "@/lib/achievements";
+import { supabase } from "@/lib/supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // ── Ad Unit IDs ───────────────────────────────────────────────────────────────
 const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
@@ -741,11 +742,13 @@ const POOL: Record<string, WordEntry[]> = {
 };
 
 // Multiplayer match length
-const MP_TOTAL = 10;
+// MP_TOTAL is read from URL — 5 or 10 rounds (set in lobby)
 
 // ── Bot config ────────────────────────────────────────────────────────────────
-const BOT_COLORS = ["bg-violet-500", "bg-orange-500", "bg-pink-500"];
-const BOT_NAMES  = ["NeonNinja",     "SpeedDemon",    "GhostWord"  ];
+// ── Player accent colours (slot-based, no bots) ───────────────────────────────
+const SLOT_COLORS  = ["#22d3ee", "#a78bfa", "#fb923c", "#f472b6"];
+const SLOT_BG      = ["rgba(34,211,238,0.12)", "rgba(167,139,250,0.12)", "rgba(251,146,60,0.12)", "rgba(244,114,182,0.12)"];
+const SLOT_BORDER  = ["rgba(34,211,238,0.4)",  "rgba(167,139,250,0.4)",  "rgba(251,146,60,0.4)",  "rgba(244,114,182,0.4)"];
 
 // ── Praise messages ───────────────────────────────────────────────────────────
 const PRAISE: { maxRatio: number; lines: string[] }[] = [
@@ -782,9 +785,19 @@ function pickWord(pool: string): WordEntry {
 export default function Game() {
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const isMultiplayer = search.includes("mode=multiplayer");
-  const botCount = search.includes("type=1v1v1v1") ? 3 : search.includes("type=1v1v1") ? 2 : 1;
-  const { scores, setScores } = useGameData();
+  const isMultiplayer  = search.includes("mode=multiplayer");
+  const matchId        = new URLSearchParams(search).get("matchId") ?? "";
+  const MP_TOTAL       = search.includes("rounds=10") ? 10 : 5;
+  const { user, scores, setScores } = useGameData();
+
+  // ── Real multiplayer players (from Supabase) ────────────────────────────────
+  type RealPlayer = { user_id: string; username: string; pfp?: string; score: number; slot: number; isYou: boolean };
+  const [mpPlayers, setMpPlayers]     = useState<RealPlayer[]>([]);
+  const [activeSlot, setActiveSlot]   = useState(0);
+  const [turnPhase, setTurnPhase]     = useState<"camera-in"|"playing"|"opponent-playing">("camera-in");
+  const activeSlotRef                 = useRef(0);
+  const mpChannel                     = useRef<RealtimeChannel | null>(null);
+  const mySlot                        = mpPlayers.find((p) => p.isYou)?.slot ?? 0;
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [gameState, setGameState] = useState<GameState>("COUNTDOWN");
@@ -793,7 +806,7 @@ export default function Game() {
   const [score, setScore]         = useState(0);
   const [lives, setLives]         = useState(3);
   const [canRevive, setCanRevive] = useState(true);
-  const [mpRound, setMpRound]     = useState(1);   // 1-10 for multiplayer
+  const [mpRound, setMpRound]     = useState(1);
   const [paused, setPaused]       = useState(false);
 
   const [entry, setEntry]         = useState<WordEntry>({ word: "", hint: "" });
@@ -806,9 +819,42 @@ export default function Game() {
   } | null>(null);
   const [showHint, setShowHint]   = useState(true);
 
-  const [botScores, setBotScores] = useState<number[]>(() =>
-    BOT_NAMES.slice(0, botCount).map(() => 400 + Math.floor(Math.random() * 600))
-  );
+  // ── Supabase realtime sync ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isMultiplayer || !matchId) return;
+
+    // Load players from match
+    supabase.from("match_players").select("user_id,username,pfp,score,slot")
+      .eq("match_id", matchId).order("slot")
+      .then(({ data }) => {
+        if (!data) return;
+        setMpPlayers(data.map((p) => ({ ...p, pfp: p.pfp ?? undefined, isYou: p.user_id === user?.id })));
+      });
+
+    // Subscribe to match_state changes (active_slot, word, phase, round)
+    mpChannel.current = supabase.channel(`match_${matchId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "match_state",
+        filter: `match_id=eq.${matchId}` }, (payload) => {
+          const s = payload.new as { active_slot: number; current_round: number; word: string; hint: string; phase: string };
+          setActiveSlot(s.active_slot);
+          activeSlotRef.current = s.active_slot;
+          setMpRound(s.current_round);
+          setEntry({ word: s.word, hint: s.hint });
+          setTurnPhase(s.phase as "camera-in"|"playing"|"opponent-playing");
+          if (s.phase === "playing" && s.active_slot === mySlot) {
+            setRevealed(0); setGuess(""); setGameState("COUNTDOWN"); setCountdown(3);
+          }
+      })
+      // Subscribe to score updates
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "match_players",
+        filter: `match_id=eq.${matchId}` }, (payload) => {
+          const p = payload.new as { user_id: string; score: number };
+          setMpPlayers((prev) => prev.map((pl) => pl.user_id === p.user_id ? { ...pl, score: p.score } : pl));
+      })
+      .subscribe();
+
+    return () => { mpChannel.current?.unsubscribe(); };
+  }, [isMultiplayer, matchId, user?.id]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const typingTimer          = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -850,7 +896,7 @@ export default function Game() {
     if (!isMultiplayer || paused) return;
     if (["GAME_OVER", "MATCH_OVER", "INTERSTITIAL"].includes(gameState)) return;
     const t = setInterval(() => {
-      setBotScores((prev) => prev.map((s) => s + Math.floor(Math.random() * 95 + 30)));
+      // No bot scores — real players handle their own scoring
     }, 2400);
     return () => clearInterval(t);
   }, [isMultiplayer, gameState, paused]);
@@ -868,22 +914,44 @@ export default function Game() {
     setGameState("COUNTDOWN");
   }, []);
 
-  // ── nextRound ────────────────────────────────────────────────────────────────
-  const nextRound = useCallback(() => {
-    if (isMultiplayer) {
-      const next = mpRoundRef.current + 1;
-      mpRoundRef.current = next;
-      setMpRound(next);
-      if (next > MP_TOTAL) {
+  // ── nextRound — advances turn in Supabase so all clients sync ────────────────
+  const nextRound = useCallback(async () => {
+    if (isMultiplayer && matchId) {
+      // Fetch current state
+      const { data: st } = await supabase.from("match_state").select("*").eq("match_id", matchId).single();
+      if (!st) return;
+
+      const { data: players } = await supabase.from("match_players").select("slot").eq("match_id", matchId);
+      const totalSlots = players?.length ?? 2;
+      const nextSlot   = (st.active_slot + 1) % totalSlots;
+      const isNewRound = nextSlot === 0;
+      const nextRoundN = isNewRound ? st.current_round + 1 : st.current_round;
+
+      if (nextRoundN > MP_TOTAL) {
+        // Match over — update match status
+        await supabase.from("matches").update({ status: "finished" }).eq("id", matchId);
         afterInterstitialRef.current = "match-over";
         setGameState("INTERSTITIAL");
-      } else {
-        setRound((r) => { const nr = r + 1; beginRound(nr); return nr; });
+        return;
       }
+
+      // Pick next word
+      const entry = pickWord(nextRoundN <= 10 ? "easy" : nextRoundN <= 20 ? "medium" : nextRoundN <= 30 ? "hard" : "insane");
+
+      // Update match_state — all clients receive this via realtime
+      await supabase.from("match_state").update({
+        active_slot:    nextSlot,
+        current_round:  nextRoundN,
+        word:           entry.word,
+        hint:           entry.hint,
+        phase:          "camera-in",
+        updated_at:     new Date().toISOString(),
+      }).eq("match_id", matchId);
+
     } else {
       setRound((r) => { const nr = r + 1; beginRound(nr); return nr; });
     }
-  }, [isMultiplayer, beginRound]);
+  }, [isMultiplayer, matchId, beginRound, MP_TOTAL]);
 
   // ── doEndGame (solo) ─────────────────────────────────────────────────────────
   const doEndGame = useCallback(() => {
@@ -943,7 +1011,6 @@ export default function Game() {
   }, [isMultiplayer, nextRound, doEndGame]);
 
   // ── Countdown ────────────────────────────────────────────────────────────────
-  useEffect(() => {
     if (gameState !== "COUNTDOWN" || paused) return;
     if (countdown <= 0) { SFX.go(); setGameState("TYPING"); return; }
     SFX.countdown();
@@ -1030,7 +1097,14 @@ export default function Game() {
   }, [gameState, paused, handleStop]);
 
   // ── Init ─────────────────────────────────────────────────────────────────────
-  useEffect(() => { beginRound(1); }, []);
+  useEffect(() => {
+    if (isMultiplayer) {
+      setTurnPhase("camera-in");
+      setTimeout(() => { setTurnPhase("playing"); beginRound(1); }, 1800);
+    } else {
+      beginRound(1);
+    }
+  }, []);
 
   const restartGame = () => {
     setScore(0); scoreRef.current = 0;
@@ -1038,8 +1112,14 @@ export default function Game() {
     setCanRevive(true); canReviveRef.current = true;
     setMpRound(1); mpRoundRef.current = 1;
     setRound(1); roundRef.current = 1;
-    setBotScores(BOT_NAMES.slice(0, botCount).map(() => 400 + Math.floor(Math.random() * 600)));
-    beginRound(1);
+    setActiveSlot(0); activeSlotRef.current = 0;
+    setMpPlayers([]);
+    if (isMultiplayer) {
+      setTurnPhase("camera-in");
+      setTimeout(() => { setTurnPhase("playing"); beginRound(1); }, 1800);
+    } else {
+      beginRound(1);
+    }
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────────
@@ -1113,680 +1193,129 @@ export default function Game() {
         {/* ── Game area ────────────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-8 relative">
 
-          {/* Multiplayer sidebar */}
+          {/* ── Multiplayer turn-based UI ──────────────────────────────── */}
           {isMultiplayer && (
-            <div className="absolute left-3 top-3 flex flex-col gap-2">
-              {botScores.map((s, i) => (
-                <motion.div
-                  key={i}
-                  className="flex items-center gap-2 bg-black/40 border border-white/8 rounded-xl px-2.5 py-2 backdrop-blur-sm"
-                >
-                  <div className={`w-7 h-7 rounded-full ${BOT_COLORS[i]} flex items-center justify-center text-[10px] font-black text-white`}>
-                    {BOT_NAMES[i].slice(0, 1)}
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground leading-none">{BOT_NAMES[i]}</div>
-                    <motion.div
-                      key={s}
-                      initial={{ color: "#22d3ee" }}
-                      animate={{ color: "#ffffff" }}
-                      transition={{ duration: 0.7 }}
-                      className="text-xs font-mono font-bold leading-none mt-0.5 tabular-nums"
-                    >
-                      {s.toLocaleString()}
-                    </motion.div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
+            <AnimatePresence mode="wait">
 
-          <AnimatePresence mode="wait">
+              {/* Camera-in: whose turn is it */}
+              {turnPhase === "camera-in" && (() => {
+                const activeP = mpPlayers.find((p) => p.slot === activeSlot);
+                const isMyTurn = activeSlot === mySlot;
+                const color = SLOT_COLORS[activeSlot] ?? "#22d3ee";
+                const bg    = SLOT_BG[activeSlot]    ?? "rgba(34,211,238,0.12)";
+                return (
+                  <motion.div key={`cam-${activeSlot}-${mpRound}`}
+                    initial={{ opacity: 0, scale: 1.1 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-8"
+                    style={{ background: "rgba(3,5,14,0.95)", backdropFilter: "blur(14px)" }}>
 
-            {/* Countdown */}
-            {gameState === "COUNTDOWN" && (
-              <motion.div
-                key="countdown"
-                initial={{ scale: 0.35, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 1.7, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className={`text-9xl font-black font-display select-none ${
-                  countdown === 0 ? "text-emerald-400" : "text-white"
-                }`}
-                style={countdown === 0 ? { textShadow: "0 0 40px rgba(52,211,153,0.7)" } : {}}
-              >
-                {countdown > 0 ? countdown : "GO!"}
-              </motion.div>
-            )}
-
-            {/* Play view */}
-            {(gameState === "TYPING" || gameState === "GUESSING" || gameState === "FEEDBACK") && word.length > 0 && (
-              <motion.div
-                key="play"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center gap-8 w-full max-w-2xl"
-              >
-                {/* Hint */}
-                <div className="h-7 flex items-center">
-                  <AnimatePresence>
-                    {showHint && gameState === "TYPING" && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.18 }}
-                        className="text-xs font-mono text-muted-foreground/60 bg-white/4 border border-white/8 px-3 py-1 rounded-full tracking-wide"
-                      >
-                        {entry.hint}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Word tiles */}
-                <div className="flex flex-wrap justify-center gap-2 md:gap-3">
-                  {word.split("").map((char, idx) => {
-                    const isRevealed  = idx < revealed;
-                    const guessIdx    = idx - revealed;
-                    const isGuessed   = !isRevealed && guessIdx >= 0 && guessIdx < guess.length;
-                    const isNext      = !isRevealed && guessIdx === guess.length && gameState === "GUESSING";
-                    const guessedChar = isGuessed ? guess[guessIdx] : "";
-
-                    let tile    = "border-white/10 bg-white/3 text-transparent";
-                    let display = "";
-
-                    if (isRevealed) {
-                      tile    = "border-cyan-400/50 bg-cyan-400/8 text-cyan-300";
-                      display = char;
-                    } else if (isGuessed) {
-                      if (gameState === "FEEDBACK") {
-                        tile = feedback?.kind === "correct"
-                          ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-300"
-                          : "border-red-400/60 bg-red-400/10 text-red-300";
-                      } else {
-                        tile = "border-violet-400/50 bg-violet-400/8 text-violet-200";
-                      }
-                      display = guessedChar;
-                    } else if (isNext) {
-                      tile = "border-violet-400 border-2 bg-violet-400/5 animate-pulse text-transparent";
-                    } else if (gameState === "FEEDBACK" && feedback?.kind === "slow") {
-                      tile    = "border-yellow-400/30 bg-yellow-400/5 text-yellow-400/50";
-                      display = char;
-                    }
-
-                    return (
-                      <motion.div
-                        key={idx}
-                        initial={isRevealed && idx === revealed - 1 ? { scale: 0.5, opacity: 0 } : false}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.09, ease: "easeOut" }}
-                        className={`flex items-center justify-center border-2 rounded-xl font-mono font-bold transition-colors duration-100 ${tile}`}
-                        style={{ width: "3rem", height: "3.75rem", fontSize: "1.6rem" }}
-                      >
-                        {display}
-                      </motion.div>
-                    );
-                  })}
-                </div>
-
-                {/* STOP */}
-                {gameState === "TYPING" && (
-                  <motion.button
-                    whileTap={{ scale: 0.86 }}
-                    onClick={handleStop}
-                    className="w-32 h-32 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-black text-2xl font-display border-4 border-red-400/50 shadow-[0_0_36px_rgba(220,38,38,0.45)] pulse-ring transition-colors select-none"
-                    data-testid="button-stop"
-                  >
-                    STOP
-                  </motion.button>
-                )}
-
-                {/* Guessing prompt */}
-                {gameState === "GUESSING" && (
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {remaining} letter{remaining !== 1 ? "s" : ""} left — start typing
-                    </p>
-                    {guess.length > 0 && (
-                      <button
-                        onClick={() => setGuess((g) => g.slice(0, -1))}
-                        className="mt-2 text-xs text-muted-foreground/40 hover:text-muted-foreground font-mono underline transition-colors"
-                      >
-                        backspace
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Feedback */}
-                {gameState === "FEEDBACK" && feedback && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.65, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ type: "spring", stiffness: 420, damping: 20 }}
-                    className="flex flex-col items-center gap-1.5"
-                  >
-                    {feedback.kind === "correct" && feedback.praise && (
-                      <div className="text-base font-bold text-emerald-400 tracking-widest font-display">
-                        {feedback.praise}
+                    {/* Big avatar */}
+                    <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.12, type: "spring", stiffness: 300 }}
+                      className="flex flex-col items-center gap-4">
+                      <div className="relative w-28 h-28 rounded-3xl overflow-hidden flex items-center justify-center"
+                        style={{ border: `3px solid ${color}`, background: bg, boxShadow: `0 0 40px ${color}55` }}>
+                        {activeP?.pfp
+                          ? <img src={activeP.pfp} className="w-full h-full object-cover" alt="" />
+                          : <span className="text-5xl font-black" style={{ color }}>{(activeP?.username?.[0] ?? "?").toUpperCase()}</span>
+                        }
                       </div>
-                    )}
-                    <div className={`text-5xl font-black font-display ${
-                      feedback.kind === "correct" ? "text-white"
-                      : feedback.kind === "slow"   ? "text-yellow-400"
-                      : "text-red-400"
-                    }`}
-                      style={feedback.kind === "correct" ? { textShadow: "0 0 30px rgba(255,255,255,0.3)" } : {}}
-                    >
-                      {feedback.kind === "correct"
-                        ? `+${feedback.points?.toLocaleString()}`
-                        : feedback.kind === "slow" ? "TOO SLOW"
-                        : "WRONG"}
+                      <div className="text-center">
+                        <div className="text-4xl font-black" style={{ fontFamily: "Orbitron, sans-serif", color }}>
+                          {isMyTurn ? "YOUR TURN" : `${activeP?.username ?? "..."}'S TURN`}
+                        </div>
+                        <div className="text-sm text-muted-foreground font-mono mt-1">Round {mpRound} of {MP_TOTAL}</div>
+                      </div>
+                    </motion.div>
+
+                    {/* All player scores strip */}
+                    <motion.div initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.25 }}
+                      className="flex gap-3 flex-wrap justify-center px-4">
+                      {mpPlayers.map((p) => {
+                        const c = SLOT_COLORS[p.slot] ?? "#fff";
+                        const active = p.slot === activeSlot;
+                        return (
+                          <div key={p.slot} className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-2xl border transition-all"
+                            style={{ borderColor: active ? `${c}60` : "rgba(255,255,255,0.1)", background: active ? `${c}12` : "rgba(255,255,255,0.03)" }}>
+                            <div className="w-9 h-9 rounded-xl overflow-hidden border flex items-center justify-center"
+                              style={{ borderColor: `${c}40`, background: `${c}15` }}>
+                              {p.pfp ? <img src={p.pfp} className="w-full h-full object-cover" alt="" /> : <span className="text-sm font-black" style={{ color: c }}>{p.username[0].toUpperCase()}</span>}
+                            </div>
+                            <span className="text-[10px] font-mono truncate max-w-[52px]" style={{ color: p.isYou ? c : "rgba(255,255,255,0.5)" }}>{p.isYou ? "You" : p.username}</span>
+                            <span className="text-[10px] font-mono font-bold tabular-nums" style={{ color: c }}>{p.score.toLocaleString()}</span>
+                          </div>
+                        );
+                      })}
+                    </motion.div>
+                  </motion.div>
+                );
+              })()}
+
+              {/* Opponent playing — waiting screen */}
+              {turnPhase === "opponent-playing" && (() => {
+                const activeP = mpPlayers.find((p) => p.slot === activeSlot);
+                const color   = SLOT_COLORS[activeSlot] ?? "#a78bfa";
+                return (
+                  <motion.div key={`opp-${activeSlot}`}
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6"
+                    style={{ background: "rgba(3,5,14,0.88)", backdropFilter: "blur(10px)" }}>
+                    <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 flex items-center justify-center"
+                      style={{ borderColor: color, background: `${color}20`, boxShadow: `0 0 24px ${color}44` }}>
+                      {activeP?.pfp ? <img src={activeP.pfp} className="w-full h-full object-cover" alt="" /> : <span className="text-3xl font-black" style={{ color }}>{(activeP?.username?.[0] ?? "?").toUpperCase()}</span>}
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-xl" style={{ fontFamily: "Orbitron, sans-serif", color }}>{activeP?.username}</p>
+                      <p className="text-sm text-muted-foreground font-mono mt-1">is playing...</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {[0,1,2].map((i) => (
+                        <motion.div key={i} className="w-2 h-2 rounded-full" style={{ background: color }}
+                          animate={{ scale: [1,1.6,1], opacity: [0.4,1,0.4] }}
+                          transition={{ repeat: Infinity, duration: 0.9, delay: i * 0.2 }} />
+                      ))}
+                    </div>
+                    {/* Score strip at bottom */}
+                    <div className="absolute bottom-6 flex gap-2 px-4 flex-wrap justify-center">
+                      {mpPlayers.map((p) => {
+                        const c = SLOT_COLORS[p.slot] ?? "#fff";
+                        return (
+                          <div key={p.slot} className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border backdrop-blur-sm"
+                            style={{ borderColor: p.slot === activeSlot ? `${c}50` : "rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.4)" }}>
+                            <div className="w-6 h-6 rounded-lg overflow-hidden border flex items-center justify-center" style={{ borderColor: `${c}40` }}>
+                              {p.pfp ? <img src={p.pfp} className="w-full h-full object-cover" alt="" /> : <span className="text-[9px] font-black" style={{ color: c }}>{p.username[0].toUpperCase()}</span>}
+                            </div>
+                            <span className="text-[10px] font-mono tabular-nums font-bold" style={{ color: p.isYou ? c : "rgba(255,255,255,0.7)" }}>{p.score.toLocaleString()}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </motion.div>
-                )}
-              </motion.div>
-            )}
+                );
+              })()}
 
-            {/* Game Over (solo) */}
-            {gameState === "GAME_OVER" && (
-              <motion.div
-                key="gameover"
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center gap-6 w-full max-w-xs"
-              >
-                <div className="text-center">
-                  <h2 className="text-5xl font-black font-display text-red-400 mb-1"
-                    style={{ textShadow: "0 0 30px rgba(248,113,113,0.5)" }}>
-                    GAME OVER
-                  </h2>
-                  <p className="text-sm text-muted-foreground font-mono">
-                    {round - 1} round{round - 1 !== 1 ? "s" : ""} survived
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 w-full">
-                  <div className="bg-card border border-card-border rounded-2xl p-4 text-center"
-                    style={{ background: "linear-gradient(135deg, rgba(34,211,238,0.07), transparent)" }}>
-                    <div className="text-xs text-muted-foreground font-mono mb-1">Score</div>
-                    <div className="text-2xl font-bold text-cyan-400 font-mono tabular-nums">{score.toLocaleString()}</div>
-                  </div>
-                  <div className="bg-card border border-card-border rounded-2xl p-4 text-center">
-                    <div className="text-xs text-muted-foreground font-mono mb-1">Best</div>
-                    <div className="text-2xl font-bold font-mono tabular-nums">{scores.highScore.toLocaleString()}</div>
-                  </div>
-                </div>
-                {score > 0 && score >= scores.highScore && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    className="text-xs font-mono text-yellow-400">
-                    ✦ New personal best!
-                  </motion.div>
-                )}
-                <div className="flex flex-col w-full gap-2">
-                  <Button
-                    variant="outline"
-                    className="w-full h-11 font-bold border-white/12 rounded-2xl gap-2"
-                    onClick={() => {
-                      SFX.tap();
-                      tryUnlock("shared");
-                      const text = `🎯 Last Word\n⭐ Score: ${score.toLocaleString()}\n🏆 Round: ${round - 1}\nCan you beat me?`;
-                      if (navigator.share) navigator.share({ title: "Last Word", text }).catch(() => {});
-                      else if (navigator.clipboard) navigator.clipboard.writeText(text);
-                    }}
-                  >
-                    <Share2 className="h-4 w-4" /> Share Score
-                  </Button>
-                  <Button
-                    className="w-full h-12 font-bold bg-cyan-400 text-black hover:bg-cyan-300 rounded-2xl"
-                    onClick={() => { SFX.tap(); restartGame(); }}
-                    data-testid="button-play-again"
-                  >
-                    <Play className="mr-2 h-4 w-4 fill-current" /> Play Again
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full h-12 font-bold border-white/12 rounded-2xl"
-                    onClick={() => { SFX.tap(); setLocation("/"); }}
-                    data-testid="button-main-menu"
-                  >
-                    <Home className="mr-2 h-4 w-4" /> Home
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Match Over (multiplayer) */}
-            {gameState === "MATCH_OVER" && (
-              <MatchOverScreen
-                playerScore={score}
-                botScores={botScores}
-                botCount={botCount}
-                onRematch={restartGame}
-                onHome={() => setLocation("/")}
-              />
-            )}
-
-            {/* Ad Revive */}
-            {gameState === "AD_REVIVE" && (
-              <AdReviveModal
-                onDecline={() => {
-                  if (isMultiplayer) {
-                    setGameState("MATCH_OVER");
-                  } else {
-                    doEndGame();
-                  }
-                }}
-                onRevive={() => {
-                  const newLives = 1;
-                  livesRef.current = newLives;
-                  setLives(newLives);
-                  canReviveRef.current = false;
-                  setCanRevive(false);
-                  nextRound();
-                }}
-              />
-            )}
-
-            {/* Interstitial ad */}
-            {gameState === "INTERSTITIAL" && (
-              <InterstitialAd
-                onDone={() => {
-                  if (afterInterstitialRef.current === "match-over") {
-                    setGameState("MATCH_OVER");
-                  } else {
-                    doEndGame();
-                  }
-                }}
-              />
-            )}
-
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* Pause overlay */}
-      <AnimatePresence>
-        {paused && (gameState === "TYPING" || gameState === "GUESSING") && (
-          <PauseOverlay onResume={() => setPaused(false)} />
-        )}
-      </AnimatePresence>
-    </Layout>
-  );
-}
-
-// ── Pause Overlay ─────────────────────────────────────────────────────────────
-function PauseOverlay({ onResume }: { onResume: () => void }) {
-  const [count, setCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (count === null) return;
-    if (count <= 0) { onResume(); return; }
-    const t = setTimeout(() => setCount((c) => (c ?? 1) - 1), 700);
-    return () => clearTimeout(t);
-  }, [count, onResume]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8"
-      style={{ background: "rgba(4,6,18,0.88)", backdropFilter: "blur(12px)" }}
-    >
-      {count !== null ? (
-        <motion.div
-          key={count}
-          initial={{ scale: 0.4, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 1.5, opacity: 0 }}
-          className="text-9xl font-black font-display text-cyan-400 select-none"
-          style={{ textShadow: "0 0 60px rgba(34,211,238,0.6)" }}
-        >
-          {count === 0 ? "GO!" : count}
-        </motion.div>
-      ) : (
-        <>
-          <div className="text-center">
-            <div className="text-5xl font-black font-display text-white mb-2">PAUSED</div>
-            <p className="text-sm text-muted-foreground font-mono">Game saved — take your time</p>
-          </div>
-          <Button
-            onClick={() => setCount(3)}
-            className="h-14 px-10 bg-cyan-400 text-black font-black text-lg hover:bg-cyan-300 rounded-2xl shadow-[0_0_30px_rgba(34,211,238,0.3)]"
-          >
-            ▶ Resume
-          </Button>
-        </>
-      )}
-    </motion.div>
-  );
-}
-
-// ── Interstitial Ad ───────────────────────────────────────────────────────────
-// Shows a REAL full-screen Google interstitial ad (ca-app-pub-1445407957198527/6095352248)
-// Falls back to a 5-second loading screen if AdMob isn't available (e.g. in browser preview)
-function InterstitialAd({ onDone }: { onDone: () => void }) {
-  const [fallback, setFallback] = useState(false);
-  const [t, setT]               = useState(5);
-  const [canSkip, setCanSkip]   = useState(false);
-  const called                  = useRef(false);
-
-  useEffect(() => {
-    if (called.current) return;
-    called.current = true;
-
-    async function showInterstitial() {
-      try {
-        // Prepare the ad (loads it into memory)
-        await AdMob.prepareInterstitial({
-          adId: INTERSTITIAL_AD_ID,
-          isTesting: false,
-        });
-
-        // Listen for when the ad is dismissed — then call onDone
-        await AdMob.addListener(InterstitialAdPluginEvents.Loaded, async () => {
-          await AdMob.showInterstitial();
-        });
-
-        await AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, () => {
-          // Ad failed — use fallback UI
-          setFallback(true);
-        });
-
-        await AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => {
-          onDone();
-        });
-
-      } catch {
-        // Not on a device (browser preview) — show fallback
-        setFallback(true);
-      }
-    }
-
-    showInterstitial();
-  }, [onDone]);
-
-  // Fallback countdown UI (shown in browser or if ad fails)
-  useEffect(() => {
-    if (!fallback) return;
-    if (t <= 0) { setCanSkip(true); return; }
-    const timer = setTimeout(() => setT((v) => v - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [fallback, t]);
-
-  if (!fallback) {
-    // Real ad is loading/showing — show a brief loading state
-    return (
-      <motion.div
-        key="interstitial-loading"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-        style={{ background: "rgba(3,5,14,0.97)" }}
-      >
-        <div className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Loading ad...</div>
-        <motion.div
-          className="w-8 h-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400"
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-        />
-      </motion.div>
-    );
-  }
-
-  // Fallback UI
-  return (
-    <motion.div
-      key="interstitial"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 p-6"
-      style={{ background: "rgba(3,5,14,0.97)" }}
-    >
-      <div className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Advertisement</div>
-      <div
-        className="w-full max-w-sm rounded-3xl overflow-hidden relative flex flex-col items-center justify-center gap-4 py-10 px-6"
-        style={{
-          background: "linear-gradient(145deg, #0d1b35 0%, #121226 60%, #0d1b35 100%)",
-          border: "1px solid rgba(34,211,238,0.18)",
-        }}
-      >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-20 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-black text-white"
-          style={{ background: "linear-gradient(135deg, #22d3ee 0%, #7c3aed 100%)" }}>LW</div>
-        <div className="text-center">
-          <div className="text-2xl font-black font-display text-white">Last Word</div>
-          <div className="text-sm text-white/50 mt-1">The ultimate word game</div>
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
-          <motion.div className="h-full rounded-full" initial={{ width: "0%" }} animate={{ width: "100%" }}
-            transition={{ duration: 5, ease: "linear" }}
-            style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }} />
-        </div>
-      </div>
-      {canSkip ? (
-        <Button onClick={onDone}
-          className="h-11 px-8 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-2xl font-bold">
-          <X className="mr-2 h-4 w-4" /> Close Ad
-        </Button>
-      ) : (
-        <div className="text-xs font-mono text-white/30 tabular-nums">Closes in {t}s</div>
-      )}
-    </motion.div>
-  );
-}
-
-// ── Match Over Screen ─────────────────────────────────────────────────────────
-function MatchOverScreen({
-  playerScore, botScores, botCount, onRematch, onHome,
-}: {
-  playerScore: number; botScores: number[]; botCount: number;
-  onRematch: () => void; onHome: () => void;
-}) {
-  const players = [
-    { name: "You", score: playerScore, isPlayer: true, color: "bg-cyan-500" },
-    ...botScores.slice(0, botCount).map((s, i) => ({
-      name: BOT_NAMES[i], score: s, isPlayer: false, color: BOT_COLORS[i],
-    })),
-  ].sort((a, b) => b.score - a.score);
-
-  const playerRank = players.findIndex((p) => p.isPlayer) + 1;
-  const medals = ["🏆", "🥈", "🥉", "4"];
-
-  const rankMessages: Record<number, string> = {
-    1: "You won the match!",
-    2: "So close — almost there!",
-    3: "Keep pushing — you'll get 'em.",
-    4: "Tough match, come back swinging.",
-  };
-
-  return (
-    <motion.div
-      key="matchover"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center gap-5 w-full max-w-sm"
-    >
-      <div className="text-center">
-        <h2
-          className="text-4xl font-black font-display"
-          style={{
-            color: playerRank === 1 ? "#fbbf24" : "#ffffff",
-            textShadow: playerRank === 1 ? "0 0 30px rgba(251,191,36,0.5)" : "none",
-          }}
-        >
-          MATCH OVER
-        </h2>
-        <p className="text-sm font-mono text-muted-foreground mt-1">
-          {rankMessages[playerRank] ?? "Good game!"}
-        </p>
-      </div>
-
-      {/* Standings */}
-      <div className="w-full flex flex-col gap-2">
-        {players.map((p, i) => (
-          <motion.div
-            key={p.name}
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-2xl border ${
-              p.isPlayer
-                ? "bg-cyan-400/8 border-cyan-400/25"
-                : "bg-white/3 border-white/8"
-            }`}
-          >
-            <span className="text-xl w-6 text-center">{medals[i] ?? i + 1}</span>
-            <div className={`w-7 h-7 rounded-full ${p.color} flex items-center justify-center text-[10px] font-black text-white`}>
-              {p.name.slice(0, 1)}
-            </div>
-            <span className={`flex-1 font-bold text-sm ${p.isPlayer ? "text-cyan-400" : "text-white/80"}`}>
-              {p.isPlayer ? "You" : p.name}
-            </span>
-            <span className="font-mono font-bold text-sm tabular-nums">
-              {p.score.toLocaleString()}
-            </span>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="flex flex-col w-full gap-2 pt-1">
-        <Button
-          className="w-full h-12 bg-cyan-400 text-black font-bold hover:bg-cyan-300 rounded-2xl"
-          onClick={onRematch}
-        >
-          <Play className="mr-2 h-4 w-4 fill-current" /> Rematch
-        </Button>
-        <Button
-          variant="outline"
-          className="w-full h-12 border-white/12 rounded-2xl"
-          onClick={onHome}
-        >
-          <Home className="mr-2 h-4 w-4" /> Home
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── Ad Revive Modal ───────────────────────────────────────────────────────────
-// Shows a REAL Google rewarded ad (ca-app-pub-1445407957198527/6949268913)
-// Player MUST watch it fully to earn the revive — onRevive only fires on reward
-// Falls back to a 5-second timer UI if AdMob isn't available
-function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onRevive: () => void }) {
-  const [fallback, setFallback] = useState(false);
-  const [t, setT]               = useState(5);
-  const called                  = useRef(false);
-
-  useEffect(() => {
-    if (called.current) return;
-    called.current = true;
-
-    async function showRewarded() {
-      try {
-        // Prepare the rewarded ad
-        await AdMob.prepareRewardVideoAd({
-          adId: REWARDED_AD_ID,
-          isTesting: false,
-        });
-
-        // Reward earned = player watched the full ad → grant revive
-        await AdMob.addListener(RewardAdPluginEvents.Rewarded, (_reward: AdMobRewardItem) => {
-          onRevive();
-        });
-
-        // Ad dismissed without earning reward (skipped early) → decline
-        await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-          // Only decline if reward wasn't already granted
-          // (Dismissed fires after Rewarded, so onRevive may have already been called)
-        });
-
-        await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, () => {
-          setFallback(true);
-        });
-
-        await AdMob.showRewardVideoAd();
-
-      } catch {
-        // Not on device (browser preview) — show fallback UI
-        setFallback(true);
-      }
-    }
-
-    showRewarded();
-  }, [onRevive]);
-
-  // Fallback countdown
-  useEffect(() => {
-    if (!fallback) return;
-    if (t <= 0) return;
-    const timer = setTimeout(() => setT((v) => v - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [fallback, t]);
-
-  if (!fallback) {
-    // Real ad is loading — show spinner
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4"
-        style={{ background: "rgba(3,5,14,0.88)", backdropFilter: "blur(10px)" }}
-      >
-        <div className="text-sm font-mono text-white/40">Loading ad...</div>
-        <motion.div
-          className="w-8 h-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400"
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-        />
-        <Button variant="outline" className="mt-4 h-10 px-6 border-white/12 rounded-2xl text-sm"
-          onClick={onDecline}>
-          Cancel
-        </Button>
-      </motion.div>
-    );
-  }
-
-  // Fallback UI
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="absolute inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgba(3,5,14,0.88)", backdropFilter: "blur(10px)" }}
-    >
-      <div className="w-full max-w-sm flex flex-col gap-4">
-        <div className="text-center">
-          <h3 className="text-2xl font-black font-display mb-1">Continue?</h3>
-          <p className="text-sm text-muted-foreground">Watch a short ad to get 1 life back.</p>
-        </div>
-        <div className="w-full aspect-video rounded-2xl relative overflow-hidden flex flex-col items-center justify-center gap-3"
-          style={{ background: "linear-gradient(145deg, #0d1b35, #121226, #0d1b35)", border: "1px solid rgba(34,211,238,0.15)" }}>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-white text-lg"
-            style={{ background: "linear-gradient(135deg, #22d3ee, #7c3aed)" }}>LW</div>
-          <p className="text-white/60 text-sm font-mono">Sponsored</p>
-          {t > 0 && (
-            <div className="absolute bottom-3 right-3 bg-black/70 px-2.5 py-1 rounded-lg text-xs font-mono border border-white/10 tabular-nums">{t}s</div>
+            </AnimatePresence>
           )}
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
-            <motion.div className="h-full" initial={{ width: "0%" }} animate={{ width: "100%" }}
-              transition={{ duration: 5, ease: "linear" }}
-              style={{ background: "linear-gradient(90deg, #22d3ee, #7c3aed)" }} />
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 h-11 border-white/12 rounded-2xl"
-            onClick={onDecline} data-testid="button-decline-revive">
-            <X className="mr-2 h-4 w-4" /> No thanks
-          </Button>
-          <Button className="flex-1 h-11 bg-cyan-400 text-black font-bold hover:bg-cyan-300 rounded-2xl"
-            disabled={t > 0} onClick={onRevive} data-testid="button-accept-revive">
-            {t > 0 ? `${t}s...` : "Revive!"}
-          </Button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+
+          {/* Compact player strip while YOU are playing */}
+          {isMultiplayer && turnPhase === "playing" && (
+            <div className="absolute top-3 left-3 right-3 flex gap-2 z-10 flex-wrap">
+              {mpPlayers.map((p) => {
+                const c = SLOT_COLORS[p.slot] ?? "#fff";
+                return (
+                  <div key={p.slot} className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border backdrop-blur-sm flex-shrink-0"
+                    style={{ borderColor: p.isYou ? `${c}50` : "rgba(255,255,255,0.1)", background: p.isYou ? `${c}10` : "rgba(0,0,0,0.35)" }}>
+                    <div className="w-6 h-6 rounded-lg overflow-hidden border flex items-center justify-center" style={{ borderColor: `${c}40` }}>
+                      {p.pfp ? <img src={p.pfp} className="w-full h-full object-cover" alt="" /> : <span className="text-[9px] font-black" style={{ color: c }}>{p.username[0].toUpperCase()}</span>}
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono leading-none" style={{ color: p.isYou ? c : "rgba(255,255,255,0.4)" }}>{p.isYou ? "YOU" : p.username}</div>
+                      <motion.div key={p.score} initial={{ color: c }} animate={{ color: "#ffffff" }} transition={{ duration: 0.6 }}
+                        className="text-[10px] font-mono font-bold leading-none tabular-nums">{p.score.toLocaleString()}</motion.div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+
