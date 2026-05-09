@@ -34,13 +34,11 @@ export default function Friends() {
     setFeedback({ text: "", type: "" });
 
     try {
-      const parts = trimmed.split("#");
-      const targetShortId = parts.length > 1 ? parts[1] : parts[0];
-
+      // Find user strictly by full ID
       const { data: targetUser, error: findErr } = await supabase
         .from('profiles')
         .select('id, username')
-        .filter('id', 'ilike', `${targetShortId}%`)
+        .eq('id', trimmed)
         .single();
 
       if (findErr || !targetUser) {

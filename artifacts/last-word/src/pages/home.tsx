@@ -16,7 +16,7 @@ const PARTICLE_COLORS = ["#22d3ee", "#fbbf24", "#a78bfa", "#34d399"];
 
 function FloatingLetters() {
   const particles = useMemo(() =>
-    Array.from({ length: 22 }, (_, i) => ({
+    Array.from({ length: 8 }, (_, i) => ({ // Reduced from 22 to 8 for performance
       id: i,
       letter: LETTERS[Math.floor(Math.random() * 26)],
       left: Math.random() * 96 + 2,
@@ -508,6 +508,21 @@ export default function Home() {
               {dailyStreak > 0 && (
                 <span className="flex items-center gap-0.5 text-orange-400 text-xs font-bold ml-1">
                   <Flame className="h-3 w-3 fill-orange-400" />{dailyStreak}
+                </span>
+              )}
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { SFX.tap(); setLocation("/friends"); }}
+              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
+              style={{ borderColor: "rgba(34,211,238,0.3)", background: "rgba(34,211,238,0.07)", color: "#22d3ee" }}
+            >
+              <Users className="h-4 w-4" />
+              FRIENDS
+              {(acceptedCount + incomingCount) > 0 && (
+                <span className="ml-1 text-xs bg-cyan-400 text-black px-1.5 py-0.5 rounded-full font-black">
+                  {acceptedCount + incomingCount}
                 </span>
               )}
             </motion.button>

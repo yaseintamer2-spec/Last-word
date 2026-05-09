@@ -10,6 +10,7 @@ import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvent
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Share } from "@capacitor-community/share";
 import { tryUnlock } from "@/lib/achievements";
+import { Share } from "@capacitor/share";
 
 // ── Ad Unit IDs ───────────────────────────────────────────────────────────────
 const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
@@ -290,9 +291,18 @@ export default function Game() {
   }, [gameState, paused, handleGuess]);
 
   const handleShare = async () => {
-    const text = `I just scored ${score.toLocaleString()} points in Last Word! Can you beat my daily score? 🔥`;
-    try { await Share.share({ title: 'Last Word High Score', text, url: 'https://play.google.com/store/apps/details?id=com.lastword.app', dialogTitle: 'Share your glory' }); }
-    catch (err) { console.warn('Sharing failed:', err); }
+    const text = `I just scored ${score.toLocaleString()} points in Last Word! 🔥 Can you beat me?`;
+    try {
+      await Share.share({
+        title: 'Last Word High Score',
+        text: text,
+        url: 'https://play.google.com/store/apps/details?id=com.lastword.app',
+        dialogTitle: 'Share with friends',
+      });
+      tryUnlock("shared");
+    } catch (err) {
+      console.warn('Share error:', err);
+    }
   };
 
   useEffect(() => { beginRound(1); }, []);
@@ -337,26 +347,35 @@ export default function Game() {
                     </div>
                   ))}
                 </div>
-                {gameState === "TYPING" && <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl">STOP</Button>}
+                {gameState === "TYPING" && <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl shadow-[0_0_30px_rgba(220,38,38,0.5)] active:scale-90 transition-transform">STOP</Button>}
                 {gameState === "GUESSING" && (
-                  <div className="flex flex-col items-center gap-4">
+                  <div className="flex flex-col items-center gap-6 w-full">
+                    {/* HIDDEN INPUT FOR MOBILE KEYBOARD */}
                     <input
                       ref={inputRef}
                       type="text"
-                      autoFocus
-                      className="absolute opacity-0 pointer-events-none"
-                      value=""
+                      inputMode="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      className="absolute opacity-0 w-1 h-1 pointer-events-none"
                       onChange={(e) => {
                         const val = e.target.value;
                         if (!val) return;
-                        const char = val[val.length - 1].toUpperCase();
-                        if (/^[A-Z]$/.test(char)) {
-                          handleGuess(char);
-                        }
+                        handleGuess(val[val.length - 1]);
+                        e.target.value = ""; // Reset to keep listening
                       }}
                     />
-                    <div className="text-sm font-mono text-muted-foreground">{remaining} letters left</div>
-                    <Button variant="outline" onClick={() => inputRef.current?.focus()} className="text-[10px] uppercase tracking-tighter opacity-50">Re-focus Keyboard</Button>
+                    <motion.button
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      onClick={() => inputRef.current?.focus()}
+                      className="w-full max-w-[200px] h-12 rounded-xl bg-violet-600 text-white font-bold flex items-center justify-center gap-2 shadow-lg animate-pulse"
+                    >
+                      <Zap className="h-4 w-4 fill-current" /> TAP TO TYPE
+                    </motion.button>
+                    <div className="text-xs font-mono text-muted-foreground/50 uppercase tracking-widest">
+                      {remaining} letters remaining
+                    </div>
                   </div>
                 )}
               </motion.div>
