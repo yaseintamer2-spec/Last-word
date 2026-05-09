@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.lastword.app',
   appName: 'Last Word',
   webDir: 'artifacts/last-word/dist',
+  backgroundColor: '#03050e',
 
   android: {
     allowMixedContent: false,

@@ -582,43 +582,52 @@ export default function Home() {
                 </button>
               </div>
 
-              <form onSubmit={handleSave} className="flex flex-col gap-4">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative">
-                    {pfpPreview ? (
-                      <img src={pfpPreview} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-white/15" />
-                    ) : (
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-400/15 to-violet-500/15 border-2 border-dashed border-white/15 flex items-center justify-center text-muted-foreground">
-                        <Camera className="h-6 w-6" />
-                      </div>
-                    )}
+              <form onSubmit={handleSave} className="flex flex-col gap-6">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative group">
+                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 group-hover:border-cyan-400/50 transition-all duration-300">
+                      {pfpPreview ? (
+                        <img src={pfpPreview} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-cyan-400/10 to-violet-500/10 flex items-center justify-center">
+                          <Camera className="h-8 w-8 text-white/20" />
+                        </div>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full text-black flex items-center justify-center shadow-lg active:scale-90"
+                      className="absolute -bottom-2 -right-2 w-9 h-9 rounded-2xl text-black flex items-center justify-center shadow-lg active:scale-90 transition-transform"
                       style={{ background: "linear-gradient(135deg, #22d3ee, #06b6d4)" }}
                     >
-                      <Camera className="h-3.5 w-3.5" />
+                      <Camera className="h-4 w-4" />
                     </button>
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} data-testid="input-pfp" />
-                  <p className="text-xs text-muted-foreground">Tap the camera to upload a photo</p>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Profile Identity</p>
+                  </div>
                 </div>
 
-                <Input
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  placeholder="Username (2–15 chars)"
-                  className="h-11 bg-white/4 border-white/12 rounded-xl"
-                  maxLength={15}
-                  autoFocus
-                  data-testid="input-username"
-                />
+                <div className="space-y-2">
+                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest ml-1">Username</p>
+                  <Input
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="Enter codename..."
+                    className="h-12 bg-white/5 border-white/10 rounded-xl font-mono text-lg focus:border-cyan-400/50 transition-colors"
+                    maxLength={15}
+                    autoFocus
+                  />
+                </div>
 
                 {user && (
-                  <p className="text-xs text-muted-foreground/40 font-mono text-center">
-                    ID: {user.id.split("-")[0].toUpperCase()}
-                  </p>
+                  <div className="bg-black/20 rounded-xl p-3 border border-white/5">
+                    <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1 text-center">Global Sync ID</p>
+                    <p className="text-[10px] font-mono text-cyan-400/60 text-center break-all">
+                      {user.id}
+                    </p>
+                  </div>
                 )}
 
                 <Button

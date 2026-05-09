@@ -5,13 +5,26 @@ import { Heart, Play, Home, X, Zap, Share2, Calendar } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
+import { toast } from "sonner";
 import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvents } from "@capacitor-community/admob";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-import { Share } from "@capacitor/share";
+import { Share } from "@capacitor-community/share";
+import { tryUnlock } from "@/lib/achievements";
 
 // ── Ad Unit IDs ───────────────────────────────────────────────────────────────
 const REWARDED_AD_ID     = "ca-app-pub-1445407957198527/6949268913"; // revive life
 const INTERSTITIAL_AD_ID = "ca-app-pub-1445407957198527/6095352248"; // between rounds
+
+// ── SFX/Vibrate placeholders ──────────────────────────────────────────────────
+const SFX = {
+  wrong: () => {},
+  correct: () => {},
+};
+const Vibrate = {
+  error: () => Haptics.notification({ type: NotificationType.Error }).catch(() => {}),
+  success: () => Haptics.notification({ type: NotificationType.Success }).catch(() => {}),
+  medium: () => Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {}),
+};
 
 // ── Word pool ─────────────────────────────────────────────────────────────────
 type WordEntry = { word: string; hint: string };
@@ -138,6 +151,7 @@ export default function Game() {
   const [entry, setEntry]         = useState<WordEntry>({ word: "", hint: "" });
   const [revealed, setRevealed]   = useState(0);
   const [guess, setGuess]         = useState("");
+  const inputRef                  = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback]   = useState<{ kind: "correct" | "wrong" | "slow"; points?: number; praise?: string } | null>(null);
   const [showHint, setShowHint]   = useState(true);
 
@@ -167,6 +181,23 @@ export default function Game() {
 
   const doEndGame = useCallback(() => {
     setGameState("GAME_OVER");
+
+    // Check for achievements
+    const checks = ["first_blood", "games_10"];
+    if (scoreRef.current >= 5000) checks.push("score_5k");
+    if (scoreRef.current >= 20000) checks.push("score_20k");
+    if (roundRef.current >= 31) checks.push("insane_entry");
+
+    checks.forEach(id => {
+      const unlocked = tryUnlock(id);
+      if (unlocked) {
+        toast.success(`Achievement Unlocked: ${unlocked.title}`, {
+          description: unlocked.desc,
+          icon: unlocked.icon,
+        });
+      }
+    });
+
     setScores((prev) => ({
       ...prev,
       highScore: scoreRef.current > prev.highScore ? scoreRef.current : prev.highScore,
@@ -218,33 +249,45 @@ export default function Game() {
     Haptics.impact({ style: ImpactStyle.Heavy }).catch(() => {});
     clearTyping();
     setGameState("GUESSING");
+    // Small delay to ensure input is mounted
+    setTimeout(() => inputRef.current?.focus(), 50);
   }, [gameState, revealed, entry.word]);
+
+  const handleGuess = useCallback((char: string) => {
+    setGuess((g) => {
+      const next = g + char.toUpperCase();
+      const targetSuffix = entry.word.slice(revealed).toUpperCase();
+
+      if (next === targetSuffix.slice(0, next.length)) {
+        if (next.length === targetSuffix.length) {
+          Haptics.notification({ type: NotificationType.Success }).catch(() => {});
+          const pts = calcPoints(revealed, entry.word.length, tierRef.current.mult);
+          setFeedback({ kind: "correct", points: pts, praise: getPraise(revealed / entry.word.length) });
+          setScore((s) => { scoreRef.current = s + pts; return s + pts; });
+          setGameState("FEEDBACK");
+          setTimeout(() => nextRound(), 1400);
+        }
+        return next;
+      } else {
+        SFX.wrong();
+        Vibrate.error();
+        handleLifeLoss("wrong");
+        return "";
+      }
+    });
+  }, [entry.word, revealed, nextRound, handleLifeLoss]);
 
   useEffect(() => {
     if (gameState !== "GUESSING" || paused) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Backspace") setGuess((g) => g.slice(0, -1));
       else if (/^[a-zA-Z]$/.test(e.key)) {
-        setGuess((g) => {
-          const next = g + e.key.toUpperCase();
-          const remaining = entry.word.length - revealed;
-          if (next.length === remaining) {
-            if (next === entry.word.slice(revealed)) {
-              Haptics.notification({ type: NotificationType.Success }).catch(() => {});
-              const pts = calcPoints(revealed, entry.word.length, tierRef.current.mult);
-              setFeedback({ kind: "correct", points: pts, praise: getPraise(revealed / entry.word.length) });
-              setScore((s) => { scoreRef.current = s + pts; return s + pts; });
-              setGameState("FEEDBACK");
-              setTimeout(() => nextRound(), 1400);
-            } else { handleLifeLoss("wrong"); }
-          }
-          return next;
-        });
+        handleGuess(e.key);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [gameState, entry.word, revealed, paused, handleLifeLoss, nextRound]);
+  }, [gameState, paused, handleGuess]);
 
   const handleShare = async () => {
     const text = `I just scored ${score.toLocaleString()} points in Last Word! Can you beat my daily score? 🔥`;
@@ -295,7 +338,27 @@ export default function Game() {
                   ))}
                 </div>
                 {gameState === "TYPING" && <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl">STOP</Button>}
-                {gameState === "GUESSING" && <div className="text-sm font-mono text-muted-foreground">{remaining} letters left</div>}
+                {gameState === "GUESSING" && (
+                  <div className="flex flex-col items-center gap-4">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      autoFocus
+                      className="absolute opacity-0 pointer-events-none"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        const char = val[val.length - 1].toUpperCase();
+                        if (/^[A-Z]$/.test(char)) {
+                          handleGuess(char);
+                        }
+                      }}
+                    />
+                    <div className="text-sm font-mono text-muted-foreground">{remaining} letters left</div>
+                    <Button variant="outline" onClick={() => inputRef.current?.focus()} className="text-[10px] uppercase tracking-tighter opacity-50">Re-focus Keyboard</Button>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -311,9 +374,85 @@ export default function Game() {
                 <Button variant="outline" onClick={() => setLocation("/")} className="w-full h-12 border-white/10">Home</Button>
               </motion.div>
             )}
+
+            {/* Ad Revive */}
+            {gameState === "AD_REVIVE" && (
+              <AdReviveModal
+                onDecline={doEndGame}
+                onRevive={() => {
+                  setLives(1);
+                  setCanRevive(false);
+                  nextRound();
+                }}
+              />
+            )}
+
+            {/* Interstitial ad */}
+            {gameState === "INTERSTITIAL" && (
+              <InterstitialAd onDone={doEndGame} />
+            )}
           </AnimatePresence>
         </div>
       </motion.div>
     </Layout>
+  );
+}
+
+// ── Ad Components ─────────────────────────────────────────────────────────────
+
+function InterstitialAd({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    async function show() {
+      try {
+        // SET TO FALSE FOR REAL ADS
+        await AdMob.prepareInterstitial({ adId: INTERSTITIAL_AD_ID, isTesting: false });
+        const loadedH = await AdMob.addListener(InterstitialAdPluginEvents.Loaded, async () => {
+          await AdMob.showInterstitial();
+        });
+        const dismissedH = await AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => {
+          loadedH.remove(); dismissedH.remove(); onDone();
+        });
+        const failedH = await AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, () => {
+          loadedH.remove(); dismissedH.remove(); failedH.remove(); onDone();
+        });
+      } catch { onDone(); }
+    }
+    show();
+  }, [onDone]);
+  return <div className="fixed inset-0 z-50 bg-black flex items-center justify-center text-white/20 font-mono text-xs uppercase tracking-widest">Loading...</div>;
+}
+
+function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onRevive: () => void }) {
+  const [loading, setLoading] = useState(false);
+
+  async function showRewarded() {
+    setLoading(true);
+    try {
+      // SET TO FALSE FOR REAL ADS
+      await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_ID, isTesting: false });
+      const rewardH = await AdMob.addListener(RewardAdPluginEvents.Rewarded, () => {
+        onRevive();
+      });
+      const dismissedH = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        rewardH.remove(); dismissedH.remove();
+      });
+      const failedH = await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, () => {
+        rewardH.remove(); dismissedH.remove(); failedH.remove(); setLoading(false);
+      });
+      await AdMob.showRewardVideoAd();
+    } catch { setLoading(false); }
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+      <div className="w-full max-w-sm flex flex-col gap-4 text-center">
+        <h3 className="text-2xl font-black">Continue?</h3>
+        <p className="text-sm text-muted-foreground">Watch an ad to get 1 life back.</p>
+        <Button onClick={showRewarded} disabled={loading} className="h-12 bg-cyan-400 text-black font-bold">
+          {loading ? "Loading..." : "Watch Ad to Revive"}
+        </Button>
+        <Button variant="outline" onClick={onDecline} className="h-10 border-white/10">No Thanks</Button>
+      </div>
+    </div>
   );
 }
