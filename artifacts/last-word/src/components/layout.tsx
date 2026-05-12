@@ -16,13 +16,6 @@ function useAdMobBanner() {
       initialized.current = true;
 
       try {
-        // Initialize AdMob once
-        await AdMob.initialize({
-          // Set to true only during testing — remove for production!
-          testingDevices: [],
-          initializeForTesting: false,
-        });
-
         const options: BannerAdOptions = {
           adId: BANNER_AD_ID,
           adSize: BannerAdSize.ADAPTIVE_BANNER,  // fills the screen width perfectly

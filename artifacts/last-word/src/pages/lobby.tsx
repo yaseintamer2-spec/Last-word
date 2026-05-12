@@ -119,13 +119,59 @@ export default function Lobby() {
                 <Wifi className="h-3 w-3" />{ping}ms
               </div>
             )}
-            {searching && (
-              <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />{searchTime}s
-              </div>
-            )}
           </div>
         </div>
+
+        <AnimatePresence>
+          {searching && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, y: -20 }}
+              animate={{ height: "auto", opacity: 1, y: 0 }}
+              exit={{ height: 0, opacity: 0, y: -20 }}
+              className="mb-6 overflow-hidden"
+            >
+              <div
+                className="rounded-3xl p-5 flex flex-col items-center gap-3 relative overflow-hidden"
+                style={{
+                  background: "linear-gradient(145deg, rgba(34,211,238,0.1), rgba(6,182,212,0.05))",
+                  border: "1px solid rgba(34,211,238,0.2)",
+                  boxShadow: "0 10px 40px -10px rgba(0,0,0,0.5)"
+                }}
+              >
+                {/* Scanning animation bar */}
+                <motion.div
+                  className="absolute top-0 left-0 w-full h-[2px] bg-cyan-400/50"
+                  animate={{ top: ["0%", "100%", "0%"] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                />
+
+                <div className="flex items-center gap-3 text-cyan-400">
+                  <div className="relative">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <div className="absolute inset-0 bg-cyan-400 blur-md opacity-20 animate-pulse" />
+                  </div>
+                  <span className="font-black tracking-[0.2em] uppercase text-xs">Finding global match...</span>
+                </div>
+
+                <div className="text-4xl font-mono font-black text-white tabular-nums tracking-tighter">
+                  {Math.floor(searchTime / 60).toString().padStart(2, '0')}:{(searchTime % 60).toString().padStart(2, '0')}
+                </div>
+
+                <div className="flex items-center gap-4 w-full px-4">
+                  <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-cyan-400 shadow-[0_0_10px_#22d3ee]"
+                      animate={{ width: ["0%", "100%"] }}
+                      transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[9px] font-mono text-muted-foreground/60 uppercase tracking-widest mt-1">Searching regional servers...</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
 

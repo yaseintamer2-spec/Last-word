@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { LoadingScreen } from '@/components/loading-screen';
 import { motion, AnimatePresence } from 'framer-motion';
 import { App as CapApp } from '@capacitor/app';
+import { AdMob } from '@capacitor-community/admob';
 import NotFound from '@/pages/not-found';
 
 import Home from '@/pages/home';
@@ -122,6 +123,14 @@ function OfflineScreen() {
 // ── App root ──────────────────────────────────────────────────────────────────
 function App() {
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    // Initialize AdMob globally once when app starts
+    AdMob.initialize({
+      testingDevices: [],
+      initializeForTesting: false,
+    }).catch(err => console.warn('AdMob initialization error:', err));
+  }, []);
 
   // Wire up Android hardware back button
   useAndroidBackButton();

@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { MoreVertical, Trophy, Users, Play, Swords, X, Check, Camera, Star, Calendar, Award, Flame } from "lucide-react";
+import { Trophy, Users, Play, Swords, X, Check, Camera, Star, Calendar, Award, Flame, Settings } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/layout";
+import { toast } from "sonner";
 import { isTodayCompleted, getDailyState } from "@/lib/daily";
 import { getUnlocked, ALL_ACHIEVEMENTS } from "@/lib/achievements";
 import { SFX } from "@/lib/sounds";
@@ -366,6 +367,8 @@ export default function Home() {
   const unlockedCount = getUnlocked().length;
   const [showAchievements, setShowAchievements] = useState(false);
 
+  const [showSettings, setShowSettings] = useState(false);
+
   return (
     <Layout>
       <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
@@ -399,51 +402,13 @@ export default function Home() {
               <Avatar pfp={user?.pfp} username={user?.username} size={9} />
             </button>
 
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setShowMenu((v) => !v)}
-                className="p-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground"
-                data-testid="button-menu"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
-
-              <AnimatePresence>
-                {showMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                    className="absolute right-0 top-full mt-1 w-48 rounded-2xl shadow-xl z-50 overflow-hidden"
-                    style={{ background: "linear-gradient(145deg, hsl(234,25%,10%), hsl(234,25%,8%))", border: "1px solid rgba(255,255,255,0.08)" }}
-                  >
-                    <button
-                      onClick={() => { setShowMenu(false); setLocation("/friends"); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors"
-                      data-testid="menu-friends"
-                    >
-                      <Users className="h-4 w-4 text-cyan-400" />
-                      <span>Friends</span>
-                      {(acceptedCount + incomingCount) > 0 && (
-                        <span className="ml-auto text-xs bg-cyan-400/15 text-cyan-400 px-1.5 py-0.5 rounded-full">
-                          {acceptedCount}{incomingCount > 0 ? ` +${incomingCount}` : ""}
-                        </span>
-                      )}
-                    </button>
-                    <div className="h-px bg-border mx-3" />
-                    <button
-                      onClick={() => { setShowMenu(false); setLocation("/leaderboard"); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors"
-                      data-testid="menu-leaderboard"
-                    >
-                      <Trophy className="h-4 w-4 text-yellow-400" />
-                      <span>Leaderboard</span>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            <button
+              onClick={() => { SFX.tap(); setShowSettings(true); }}
+              className="p-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground"
+              data-testid="button-settings"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
           </div>
         </div>
 
@@ -624,26 +589,35 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest ml-1">Username</p>
-                  <Input
-                    value={usernameInput}
-                    onChange={(e) => setUsernameInput(e.target.value)}
-                    placeholder="Enter codename..."
-                    className="h-12 bg-white/5 border-white/10 rounded-xl font-mono text-lg focus:border-cyan-400/50 transition-colors"
-                    maxLength={15}
-                    autoFocus
-                  />
-                </div>
-
-                {user && (
-                  <div className="bg-black/20 rounded-xl p-3 border border-white/5">
-                    <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1 text-center">Global Sync ID</p>
-                    <p className="text-[10px] font-mono text-cyan-400/60 text-center break-all">
-                      {user.id}
-                    </p>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest ml-1">Username</p>
+                    <Input
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      placeholder="Enter codename..."
+                      className="h-12 bg-white/5 border-white/10 rounded-xl font-mono text-lg focus:border-cyan-400/50 transition-colors"
+                      maxLength={15}
+                      autoFocus
+                    />
                   </div>
-                )}
+
+                  {user && (
+                    <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1">
+                      <p className="text-[8px] font-mono text-muted-foreground uppercase tracking-widest text-center">Global ID (Tap to Copy)</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(user.id);
+                          toast.success("ID Copied to clipboard");
+                        }}
+                        className="w-full text-[10px] font-mono text-cyan-400/50 hover:text-cyan-400 transition-colors break-all leading-tight"
+                      >
+                        {user.id}
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <Button
                   type="submit"
@@ -688,20 +662,104 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 {ALL_ACHIEVEMENTS.map((a) => {
                   const unlocked = getUnlocked().find((u) => u.id === a.id);
                   return (
-                    <div key={a.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${unlocked ? "bg-white/5 border-white/12" : "bg-white/2 border-white/5 opacity-50"}`}>
-                      <span className="text-xl">{a.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-sm font-bold ${unlocked ? "text-white" : "text-muted-foreground"}`}>{a.title}</div>
-                        <div className="text-xs text-muted-foreground truncate">{a.desc}</div>
+                    <div key={a.id} className={`relative overflow-hidden flex items-center gap-4 px-4 py-3 rounded-2xl border transition-all duration-500 ${
+                      unlocked
+                        ? "bg-gradient-to-r from-white/[0.08] to-transparent border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]"
+                        : "bg-black/20 border-white/5 opacity-40 grayscale"
+                    }`}>
+                      {unlocked && (
+                        <div className="absolute top-0 left-0 w-1 h-full bg-cyan-400" />
+                      )}
+                      <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+                        unlocked ? "bg-white/[0.05]" : "bg-black/20"
+                      }`}>
+                        {a.icon}
                       </div>
-                      {unlocked && <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-black tracking-tight ${unlocked ? "text-white" : "text-muted-foreground"}`}>
+                          {a.title.toUpperCase()}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-widest mt-0.5 truncate">
+                          {a.desc}
+                        </div>
+                      </div>
+                      {unlocked && (
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                          <Check className="h-3 w-3 text-emerald-400" strokeWidth={4} />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ── Settings modal ─────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+              className="w-full max-w-sm rounded-3xl p-6 shadow-2xl"
+              style={{ background: "linear-gradient(145deg, hsl(234,25%,11%), hsl(234,25%,8%))", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-bold text-lg flex items-center gap-2" style={{ fontFamily: "Orbitron, sans-serif" }}>
+                  <Settings className="h-5 w-5 text-cyan-400" /> Settings
+                </h2>
+                <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground p-1">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => { setShowSettings(false); setLocation("/leaderboard"); }}
+                  className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-left"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-yellow-400/20 flex items-center justify-center">
+                    <Trophy className="h-5 w-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-white uppercase tracking-wider text-sm">Global Leaderboard</div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">See who is the best</div>
+                  </div>
+                </button>
+
+                <div className="p-4 rounded-2xl border border-white/5 bg-black/20 space-y-3">
+                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Preferences</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-white/80">Sound Effects</span>
+                    <div className="w-10 h-6 bg-cyan-500/20 border border-cyan-500/40 rounded-full flex items-center px-1">
+                      <div className="w-4 h-4 bg-cyan-400 rounded-full ml-auto shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-white/80">Haptic Feedback</span>
+                    <div className="w-10 h-6 bg-cyan-500/20 border border-cyan-500/40 rounded-full flex items-center px-1">
+                      <div className="w-4 h-4 bg-cyan-400 rounded-full ml-auto shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <p className="text-[9px] font-mono text-center text-white/10 uppercase tracking-[0.3em]">Last Word · v1.2</p>
+                </div>
               </div>
             </motion.div>
           </motion.div>

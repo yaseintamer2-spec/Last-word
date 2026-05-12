@@ -8,7 +8,6 @@ import { Layout } from "@/components/layout";
 import { toast } from "sonner";
 import { AdMob, RewardAdPluginEvents, AdMobRewardItem, InterstitialAdPluginEvents } from "@capacitor-community/admob";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-import { Share } from "@capacitor-community/share";
 import { tryUnlock } from "@/lib/achievements";
 import { Share } from "@capacitor/share";
 
@@ -341,11 +340,32 @@ export default function Game() {
               <motion.div key="play" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-8 w-full">
                 <div className="text-xs font-mono text-muted-foreground/60">{entry.hint}</div>
                 <div className="flex gap-2">
-                  {entry.word.split("").map((char, idx) => (
-                    <div key={idx} className={`w-12 h-16 flex items-center justify-center border-2 rounded-xl font-mono font-bold text-2xl ${idx < revealed ? "border-cyan-400 bg-cyan-400/10 text-cyan-400" : "border-white/10 text-transparent"}`}>
-                      {idx < revealed ? char : (idx - revealed < guess.length ? guess[idx-revealed] : "")}
-                    </div>
-                  ))}
+                  {entry.word.split("").map((char, idx) => {
+                    const isRevealed = idx < revealed;
+                    const guessIdx   = idx - revealed;
+                    // letters currently in the 'guess' string
+                    const isGuessed  = !isRevealed && guessIdx >= 0 && guessIdx < guess.length;
+
+                    let cls = "w-12 h-16 flex items-center justify-center border-2 rounded-xl font-mono font-bold text-2xl transition-all duration-150 ";
+                    if (isRevealed) {
+                      cls += "border-cyan-400 bg-cyan-400/10 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]";
+                    } else if (isGuessed) {
+                      cls += "border-violet-400 bg-violet-400/10 text-violet-400 shadow-[0_0_15px_rgba(167,139,250,0.2)]";
+                    } else {
+                      cls += "border-white/10 text-transparent";
+                    }
+
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={false}
+                        animate={isGuessed ? { scale: [1, 1.1, 1] } : {}}
+                        className={cls}
+                      >
+                        {isRevealed ? char : (isGuessed ? guess[guessIdx] : "")}
+                      </motion.div>
+                    );
+                  })}
                 </div>
                 {gameState === "TYPING" && <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl shadow-[0_0_30px_rgba(220,38,38,0.5)] active:scale-90 transition-transform">STOP</Button>}
                 {gameState === "GUESSING" && (
@@ -357,24 +377,39 @@ export default function Game() {
                       inputMode="text"
                       autoComplete="off"
                       autoCorrect="off"
+                      spellCheck="false"
                       className="absolute opacity-0 w-1 h-1 pointer-events-none"
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                        const val = e.currentTarget.value;
                         if (!val) return;
-                        handleGuess(val[val.length - 1]);
-                        e.target.value = ""; // Reset to keep listening
+                        // Handle multiple chars (like if they paste or swipe)
+                        const char = val[val.length - 1].toUpperCase();
+                        if (/^[A-Z]$/.test(char)) {
+                          handleGuess(char);
+                        }
+                        e.currentTarget.value = ""; // Always reset
                       }}
                     />
                     <motion.button
                       initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       onClick={() => inputRef.current?.focus()}
-                      className="w-full max-w-[200px] h-12 rounded-xl bg-violet-600 text-white font-bold flex items-center justify-center gap-2 shadow-lg animate-pulse"
+                      className="w-full max-w-[220px] h-14 rounded-2xl bg-cyan-500 text-black font-black flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(34,211,238,0.4)] active:scale-95 transition-transform"
                     >
-                      <Zap className="h-4 w-4 fill-current" /> TAP TO TYPE
+                      <Zap className="h-5 w-5 fill-current" /> TAP TO TYPE
                     </motion.button>
-                    <div className="text-xs font-mono text-muted-foreground/50 uppercase tracking-widest">
-                      {remaining} letters remaining
+                    <div className="flex gap-4">
+                      <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-[0.2em]">
+                        {remaining} chars left
+                      </div>
+                      {guess.length > 0 && (
+                        <button
+                          onClick={() => setGuess("")}
+                          className="text-[10px] font-mono text-red-400 uppercase underline tracking-widest"
+                        >
+                          Clear
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
