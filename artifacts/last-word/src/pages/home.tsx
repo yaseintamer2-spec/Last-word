@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Play, Swords, X, Check, Camera, Star, Calendar, Award, Flame, Settings } from "lucide-react";
+import { Trophy, Users, Play, X, Check, Camera, Star, Calendar, Award, Flame, Settings } from "lucide-react";
 import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -441,16 +441,7 @@ export default function Home() {
               PLAY
             </motion.button>
 
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={() => { SFX.tap(); setLocation("/lobby"); }}
-              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
-              style={{ borderColor: "rgba(139,92,246,0.4)", background: "rgba(139,92,246,0.07)", color: "#c4b5fd" }}
-              data-testid="button-multiplayer"
-            >
-              <Swords className="h-4 w-4" />
-              MULTIPLAYER
-            </motion.button>
+
 
             <motion.button
               whileTap={{ scale: 0.96 }}
@@ -689,37 +680,35 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-2.5">
+              <div className="grid grid-cols-3 gap-3">
                 {ALL_ACHIEVEMENTS.map((a) => {
                   const unlocked = getUnlocked().find((u) => u.id === a.id);
                   return (
-                    <div key={a.id} className={`relative overflow-hidden flex items-center gap-4 px-4 py-3 rounded-2xl border transition-all duration-500 ${
-                      unlocked
-                        ? "bg-gradient-to-r from-white/[0.08] to-transparent border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]"
-                        : "bg-black/20 border-white/5 opacity-40 grayscale"
-                    }`}>
-                      {unlocked && (
-                        <div className="absolute top-0 left-0 w-1 h-full bg-cyan-400" />
-                      )}
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
-                        unlocked ? "bg-white/[0.05]" : "bg-black/20"
+                    <motion.div
+                      key={a.id}
+                      whileHover={{ scale: 1.05 }}
+                      className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 cursor-pointer group ${
+                        unlocked
+                          ? "bg-gradient-to-b from-white/10 to-white/[0.02] border-white/25 shadow-lg hover:shadow-xl hover:border-cyan-400/50"
+                          : "bg-black/30 border-white/5 opacity-50"
                       }`}>
+                      <div className={`text-4xl transition-all duration-300 ${unlocked ? "group-hover:scale-125" : "grayscale"}`}>
                         {a.icon}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-sm font-black tracking-tight ${unlocked ? "text-white" : "text-muted-foreground"}`}>
-                          {a.title.toUpperCase()}
-                        </div>
-                        <div className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-widest mt-0.5 truncate">
-                          {a.desc}
+                      <div className="text-center">
+                        <div className={`text-xs font-black tracking-tight leading-tight ${unlocked ? "text-white" : "text-muted-foreground"}`}>
+                          {a.title.split(' ')[0].toUpperCase()}
                         </div>
                       </div>
                       {unlocked && (
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                          <Check className="h-3 w-3 text-emerald-400" strokeWidth={4} />
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 border border-emerald-300 flex items-center justify-center">
+                          <Check className="h-2.5 w-2.5 text-white" strokeWidth={4} />
                         </div>
                       )}
-                    </div>
+                      <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" style={{
+                        background: unlocked ? "radial-gradient(circle, rgba(34,211,238,0.1) 0%, transparent 70%)" : "none"
+                      }} />
+                    </motion.div>
                   );
                 })}
               </div>

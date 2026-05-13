@@ -31,21 +31,21 @@ const Vibrate = {
 // ── Word pool ─────────────────────────────────────────────────────────────────
 type WordEntry = { word: string; hint: string };
 
-const EASY_WORDS: WordEntry[] = [
-  { word: "EAGLE",  hint: "Hunts from above" },
-  { word: "TIGER",  hint: "Orange stripes" },
-  { word: "JAPAN",  hint: "Rising sun flag" },
-  { word: "PIZZA",  hint: "Sliced in triangles" },
-  { word: "RIVER",  hint: "Always moving forward" },
-  { word: "PIANO",  hint: "88 keys" },
-  { word: "CLOUD",  hint: "Floats overhead" },
-  { word: "STORM",  hint: "Thunder follows lightning" },
-  { word: "GRAPE",  hint: "Grows in clusters" },
-  { word: "SHARK",  hint: "Never stops swimming" },
+const HARD_WORDS: WordEntry[] = [
+  { word: "ABANDON",  hint: "Leave behind" },
+  { word: "ANCIENT",  hint: "From long ago" },
+  { word: "ANXIETY",  hint: "Feeling worried" },
+  { word: "ARSENAL",  hint: "Weapons collection" },
+  { word: "BALLOON",  hint: "Floats in air" },
+  { word: "BENEATH",  hint: "Under below" },
+  { word: "BLIZZARD", hint: "Snowstorm" },
+  { word: "CAPTAIN",  hint: "Ship leader" },
+  { word: "CHAMPION", hint: "Winner" },
+  { word: "CIRCUIT",  hint: "Complete path" },
 ];
 
 const POOL: Record<string, WordEntry[]> = {
-  easy: EASY_WORDS, medium: EASY_WORDS, hard: EASY_WORDS, insane: EASY_WORDS,
+  easy: HARD_WORDS, medium: HARD_WORDS, hard: HARD_WORDS, insane: HARD_WORDS,
 };
 
 // ── Tiers ─────────────────────────────────────────────────────────────────────
@@ -94,17 +94,7 @@ function pickWord(pool: string, isDaily: boolean = false): WordEntry {
   return words[Math.floor(Math.random() * words.length)];
 }
 
-const BOT_NAMES = ["Cipher", "Vortex", "Nova"];
 
-function getBotCount(type: string): number {
-  if (type === "1v1v1v1") return 3;
-  if (type === "1v1v1") return 2;
-  return 1;
-}
-
-function botScoreBoost(roundNumber: number): number {
-  return Math.floor(140 + Math.random() * 330 + roundNumber * 35);
-}
 
 // ── Match Over Screen ─────────────────────────────────────────────────────────
 function MatchOverScreen({
@@ -162,13 +152,19 @@ function MatchOverScreen({
                 <h3 className={`text-2xl font-black uppercase tracking-tighter ${newRank.color}`}>{newRank.name}</h3>
                 <p className="text-sm font-mono text-white/40 mt-1">{newRP} TOTAL RP</p>
              </div>
-             <div className="w-full space-y-2 z-10 pt-2">
-                <div className="flex justify-between items-end px-1">
-                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Progress</span>
-                    <span className="text-xs font-mono font-bold text-violet-400">+{myRPChange} RP</span>
+             <div className="w-full space-y-3 z-10 pt-4">
+                <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">Tier Progress</span>
+                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: "spring" }} className="text-xs font-mono font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">+{myRPChange} RP</motion.span>
                 </div>
-                <div className="w-full h-4 bg-black/40 rounded-full border border-white/5 overflow-hidden p-0.5">
-                    <motion.div initial={{ width: `${(oldRP % 100)}%` }} animate={{ width: `${progressPercent}%` }} transition={{ duration: 1.5, ease: "circOut", delay: 0.5 }} className="h-full bg-gradient-to-r from-violet-700 to-violet-400 rounded-full" />
+                <div className="w-full space-y-2">
+                    <div className="w-full h-6 bg-black/60 rounded-full border-2 border-white/10 overflow-hidden p-1 relative shadow-inner">
+                        <motion.div initial={{ width: `${(oldRP % 100)}%` }} animate={{ width: `${progressPercent}%` }} transition={{ duration: 1.8, ease: "circOut", delay: 0.6 }} className="h-full bg-gradient-to-r from-violet-600 via-violet-400 to-cyan-400 rounded-full shadow-lg" style={{ boxShadow: "0 0 20px rgba(167,139,250,0.8), inset 0 1px 0 rgba(255,255,255,0.2)" }} />
+                    </div>
+                    <div className="flex justify-between text-[9px] font-mono text-white/40 px-1">
+                        <span>{oldRP % 100}/100</span>
+                        <span>{Math.floor(newRP / 100)} Tiers</span>
+                    </div>
                 </div>
              </div>
           </div>
@@ -264,28 +260,18 @@ export default function Game() {
   }, [isDaily, hasRemoteMatch]);
 
   useEffect(() => {
-    if (!localRanked || !user) return;
-    const bots = Array.from({ length: getBotCount(matchType) }, (_, idx) => ({
-      user_id: `bot-${idx}`,
-      username: BOT_NAMES[idx] ?? `Bot ${idx + 1}`,
-      score: 0,
-      slot: idx + 1,
-      isYou: false,
-      isEliminated: false,
-    }));
+    if (localRanked || !user) return;
     setMpPlayers([
       { user_id: user.id, username: user.username, score: 0, slot: 0, isYou: true, isEliminated: false, pfp: user.pfp },
-      ...bots,
     ]);
     setActiveSlot(0);
     setTurnPhase("playing");
     setMpRound(1);
-  }, [localRanked, matchType, user?.id, user?.username, user?.pfp]);
+  }, [localRanked, user?.id, user?.username, user?.pfp]);
 
   const nextRound = useCallback(async () => {
     if (isDaily && round >= 1) { setGameState("GAME_OVER"); return; }
     if (localRanked) {
-      setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: scoreRef.current } : { ...p, score: p.score + botScoreBoost(round) }));
       if (round >= roundLimit) {
         setGameState("MATCH_OVER");
         return;
@@ -318,7 +304,7 @@ export default function Game() {
     if (localRanked) {
       setMpPlayers(prev => prev.map((p) => {
         if (p.isYou) return { ...p, score: scoreRef.current, isEliminated: true };
-        return { ...p, score: p.score + botScoreBoost(round), isEliminated: false };
+        return p;
       }));
       setTimeout(() => setGameState("MATCH_OVER"), 1400);
       return;
@@ -370,7 +356,7 @@ export default function Game() {
           setScore((s) => {
             const nextScore = s + pts;
             scoreRef.current = nextScore;
-            if (localRanked) setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: nextScore } : p));
+            setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: nextScore } : p));
             return nextScore;
           });
           if (isFire) setCombustion(prev => prev + 1); else setCombustion(0);
@@ -383,7 +369,7 @@ export default function Game() {
         setCombustion(0); handleLifeLoss("wrong"); return "";
       }
     });
-  }, [entry.word, revealed, nextRound, handleLifeLoss, localRanked, hasRemoteMatch, matchId, user, combustion]);
+  }, [entry.word, revealed, nextRound, handleLifeLoss, hasRemoteMatch, matchId, user, combustion]);
 
   useEffect(() => {
     if (gameState !== "GUESSING" || paused) return;
@@ -397,14 +383,42 @@ export default function Game() {
     if (gameState !== "GAME_OVER" || isMultiplayer || savedGameOverRef.current) return;
     savedGameOverRef.current = true;
     const coinsEarned = Math.floor(score / 100);
-    setScores(prev => ({
-      ...prev,
-      highScore: Math.max(prev.highScore, score),
-      totalPoints: prev.totalPoints + score,
-      gamesPlayed: prev.gamesPlayed + 1,
-      roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
-      coins: prev.coins + coinsEarned,
-    }));
+    setScores(prev => {
+      const newGamesPlayed = prev.gamesPlayed + 1;
+      const placementGames = (prev.placementGamesPlayed ?? 0) + 1;
+      let newRP = prev.rankScore;
+      
+      // Placement match logic: first 3 games initialize rank
+      if (placementGames <= 3 && !prev.placementComplete) {
+        if (placementGames === 3) {
+          // After 3 games, calculate initial rank based on average performance
+          const avgScore = (prev.totalPoints + score) / 3;
+          if (avgScore > 10000) newRP = 600; // Gold III
+          else if (avgScore > 5000) newRP = 300; // Silver III
+          else newRP = 0; // Bronze III
+          return {
+            ...prev,
+            highScore: Math.max(prev.highScore, score),
+            totalPoints: prev.totalPoints + score,
+            gamesPlayed: newGamesPlayed,
+            roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
+            coins: prev.coins + coinsEarned,
+            rankScore: newRP,
+            placementGamesPlayed: placementGames,
+            placementComplete: true,
+          };
+        }
+      }
+      return {
+        ...prev,
+        highScore: Math.max(prev.highScore, score),
+        totalPoints: prev.totalPoints + score,
+        gamesPlayed: newGamesPlayed,
+        roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
+        coins: prev.coins + coinsEarned,
+        placementGamesPlayed: placementGames,
+      };
+    });
     tryUnlock("first_blood");
     if (score >= 5000) tryUnlock("score_5k");
     if (score >= 20000) tryUnlock("score_20k");
@@ -413,14 +427,14 @@ export default function Game() {
   const restartGame = () => {
     savedGameOverRef.current = false;
     scoreRef.current = 0;
-    setScore(0); setLives(3); setCanRevive(true); setRound(1);
-    if (!localRanked) setMpPlayers([]);
+    setScore(0); setLives(3); setCanRevive(true); setRound(1); setCombustion(0);
+    if (!localRanked && !hasRemoteMatch) setMpPlayers([]);
     setActiveSlot(0); setTurnPhase("playing"); setMpRound(1);
     beginRound(1);
   };
 
-  const activePlayer = mpPlayers.find(p => p.slot === activeSlot);
-  const isMyTurn      = activePlayer?.isYou;
+  const activePlayer = mpPlayers.find(p => p.slot === activeSlot) || mpPlayers[0];
+  const isMyTurn      = activePlayer?.isYou ?? true;
 
   return (
     <Layout>
@@ -496,7 +510,7 @@ export default function Game() {
 
 function InterstitialAd({ onDone }: { onDone: () => void }) {
   useEffect(() => {
-    async function show() { try { await AdMob.prepareInterstitial({ adId: INTERSTITIAL_AD_ID, isTesting: false }); await AdMob.showInterstitial(); onDone(); } catch { onDone(); } }
+    async function show() { try { await AdMob.prepareInterstitial({ adId: INTERSTITIAL_AD_ID, isTesting: true }); await AdMob.showInterstitial(); onDone(); } catch { onDone(); } }
     show();
   }, [onDone]);
   return <div className="fixed inset-0 z-50 bg-black flex items-center justify-center text-white/20 font-mono text-xs uppercase tracking-widest">Loading...</div>;
@@ -504,7 +518,7 @@ function InterstitialAd({ onDone }: { onDone: () => void }) {
 
 function AdReviveModal({ onDecline, onRevive }: { onDecline: () => void; onRevive: () => void }) {
   const [loading, setLoading] = useState(false);
-  async function showRewarded() { setLoading(true); try { await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_ID, isTesting: false }); await AdMob.showRewardVideoAd(); onRevive(); } catch { setLoading(false); } }
+  async function showRewarded() { setLoading(true); try { await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_ID, isTesting: true }); await AdMob.showRewardVideoAd(); onRevive(); } catch { setLoading(false); } }
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
       <div className="w-full max-w-sm flex flex-col gap-4 text-center">

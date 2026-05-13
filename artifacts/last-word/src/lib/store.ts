@@ -15,6 +15,8 @@ export type Scores = {
   roundRecord: number;
   rankScore: number;
   coins: number;
+  placementGamesPlayed?: number;
+  placementComplete?: boolean;
 };
 
 export type Friend = {
