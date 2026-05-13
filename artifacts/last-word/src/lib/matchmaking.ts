@@ -57,16 +57,30 @@ export function startMatchmaking(opts: {
   async function createMatch(players: LobbyPlayer[]) {
     if (cancelled) return;
     const ids = players.map((p) => p.user_id);
-    await supabase.from('mm_pool').update({ status: 'matched' }).in('user_id', ids);
-    const { data: m } = await supabase.from('matches')
-      .insert({ mode, round_count: roundCount, status: 'active' }).select('id').single();
-    if (!m) { onError('Failed to create match.'); return; }
+
+    // Attempt to lock players
+    const { error: updateErr } = await supabase.from('mm_pool')
+      .update({ status: 'matched' })
+      .in('user_id', ids)
+      .eq('status', 'searching');
+
+    if (updateErr) return; // Someone else probably matched them first
+
+    const { data: m, error: matchErr } = await supabase.from('matches')
+      .insert({ mode, round_count: roundCount, status: 'active' })
+      .select('id').single();
+
+    if (matchErr || !m) { onError('Failed to create match.'); return; }
+
     await supabase.from('match_players').insert(
       players.map((p, slot) => ({
         match_id: m.id, user_id: p.user_id, username: p.username,
         pfp: p.pfp ?? null, score: 0, slot, is_ready: true,
       }))
     );
+
+    // Match state is initialized by the lobby.tsx onReady now
+
     await supabase.from('mm_pool').delete().in('user_id', ids);
     if (!cancelled) onReady(m.id, players);
   }

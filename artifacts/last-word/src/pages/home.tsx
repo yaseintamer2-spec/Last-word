@@ -429,7 +429,7 @@ export default function Home() {
           >
             <motion.button
               whileTap={{ scale: 0.95 }}
-              onClick={() => setLocation("/game")}
+              onClick={() => setLocation("/modes")}
               className="w-full h-[4.5rem] text-xl font-black tracking-wider text-black rounded-2xl flex items-center justify-center gap-2 transition-all"
               style={{
                 background: "linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%)",
@@ -495,7 +495,7 @@ export default function Home() {
             <motion.button
               whileTap={{ scale: 0.96 }}
               onClick={() => { SFX.tap(); setShowAchievements(true); }}
-              className="w-full h-10 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
+              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
               style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.5)" }}
             >
               <Award className="h-4 w-4" />
@@ -503,6 +503,33 @@ export default function Home() {
               <span className="text-xs font-mono ml-1">{unlockedCount}/{ALL_ACHIEVEMENTS.length}</span>
             </motion.button>
           </motion.div>
+
+          {/* Currency Bar */}
+          {user && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-4 px-5 py-2.5 rounded-2xl bg-black/40 border border-white/5 shadow-xl"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-[10px] font-black text-black shadow-[0_0_10px_rgba(234,179,8,0.5)]">
+                  C
+                </div>
+                <span className="font-mono font-bold text-sm text-yellow-500 tabular-nums">
+                  {scores.coins.toLocaleString()}
+                </span>
+              </div>
+              <div className="w-px h-4 bg-white/10" />
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center text-[10px] font-black text-black shadow-[0_0_10px_#22d3ee80]">
+                  R
+                </div>
+                <span className="font-mono font-bold text-sm text-cyan-400 tabular-nums">
+                  {scores.rankScore.toLocaleString()}
+                </span>
+              </div>
+            </motion.div>
+          )}
 
           {/* Stats */}
           {scores.gamesPlayed > 0 && (

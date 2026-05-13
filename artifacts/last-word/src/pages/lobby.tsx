@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { startMatchmaking, joinPrivateParty, LobbyPlayer, MatchmakingHandle, estimatePing } from "@/lib/matchmaking";
 import { SFX } from "@/lib/sounds";
 
+import { supabase } from "@/lib/supabase";
+
 type Mode = "1v1" | "1v1v1" | "1v1v1v1";
 type LobbyView = "select" | "party";
 
@@ -65,6 +67,19 @@ export default function Lobby() {
       onUpdate: (p) => setPlayers(p),
       onReady:  (matchId, p) => {
         setPlayers(p); setSearching(false); setMatchReady(true); stopTimer(); SFX.levelUp();
+
+        // Initialize match state for the first player
+        if (p[0].isYou) {
+           supabase.from('match_state').insert({
+             match_id: matchId,
+             active_slot: 0,
+             current_round: 1,
+             word: "START",
+             hint: "Ready?",
+             phase: "focus"
+           }).then();
+        }
+
         setTimeout(() => setLocation(`/game?mode=multiplayer&type=${mode}&rounds=${roundCount}&matchId=${matchId}`), 1500);
       },
       onError: (msg) => { setError(msg); setSearching(false); stopTimer(); },
@@ -81,6 +96,19 @@ export default function Lobby() {
       onUpdate: (p) => setPlayers(p),
       onReady:  (matchId, p) => {
         setPlayers(p); setSearching(false); setMatchReady(true); stopTimer(); SFX.levelUp();
+
+        // Initialize match state for the first player
+        if (p[0].isYou) {
+           supabase.from('match_state').insert({
+             match_id: matchId,
+             active_slot: 0,
+             current_round: 1,
+             word: "START",
+             hint: "Ready?",
+             phase: "focus"
+           }).then();
+        }
+
         setTimeout(() => setLocation(`/game?mode=multiplayer&type=${mode}&rounds=${roundCount}&matchId=${matchId}`), 1500);
       },
       onError: (msg) => { setError(msg); setSearching(false); stopTimer(); },

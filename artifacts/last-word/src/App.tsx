@@ -15,6 +15,7 @@ import Lobby from '@/pages/lobby';
 import Leaderboard from '@/pages/leaderboard';
 import Game from '@/pages/game';
 import Daily from '@/pages/daily';
+import ModeSelect from '@/pages/mode-select';
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/modes" component={ModeSelect} />
       <Route path="/friends" component={Friends} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/leaderboard" component={Leaderboard} />

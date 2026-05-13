@@ -18,27 +18,27 @@ export default function Friends() {
   const [feedback, setFeedback]           = useState({ text: "", type: "" as "error" | "success" | "" });
   const [, setLocation]                   = useLocation();
 
-  const myId = user ? `${user.username}#${user.id.split("-")[0].toUpperCase()}` : "";
+  const myId = user ? `#${user.display_id}` : "";
 
   const handleCopyId = () => {
-    navigator.clipboard.writeText(myId).catch(() => {});
+    if (user) navigator.clipboard.writeText(user.display_id.toString()).catch(() => {});
     SFX.tap(); setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
   const handleAddFriend = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = searchQuery.trim().toUpperCase();
+    const trimmed = searchQuery.trim().replace("#", "");
     if (!trimmed || !user) return;
 
     setAdding(true);
     setFeedback({ text: "", type: "" });
 
     try {
-      // Find user strictly by full ID
+      // Find user strictly by numeric display ID
       const { data: targetUser, error: findErr } = await supabase
         .from('profiles')
         .select('id, username')
-        .eq('id', trimmed)
+        .eq('display_id', parseInt(trimmed))
         .single();
 
       if (findErr || !targetUser) {
