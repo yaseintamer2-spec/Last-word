@@ -18,10 +18,14 @@ export default function Friends() {
   const [feedback, setFeedback]           = useState({ text: "", type: "" as "error" | "success" | "" });
   const [, setLocation]                   = useLocation();
 
-  const myId = user ? `#${user.display_id}` : "";
+  const myId = user?.display_id ? `#${user.display_id}` : "Syncing...";
 
   const handleCopyId = () => {
-    if (user) navigator.clipboard.writeText(user.display_id.toString()).catch(() => {});
+    if (!user?.display_id) {
+      setFeedback({ text: "Profile ID is still syncing", type: "error" });
+      return;
+    }
+    navigator.clipboard.writeText(user.display_id.toString()).catch(() => {});
     SFX.tap(); setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
@@ -99,6 +103,27 @@ export default function Friends() {
   const incoming = friends.filter((f) => f.status === "pending_received");
   const outgoing = friends.filter((f) => f.status === "pending_sent");
   const onlineCount = accepted.filter((f) => f.online).length;
+
+  if (!user) {
+    return (
+      <Layout>
+        <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full px-6 text-center gap-6 z-10">
+          <div className="w-20 h-20 rounded-3xl bg-cyan-400/10 border border-cyan-400/25 flex items-center justify-center">
+            <Users className="h-9 w-9 text-cyan-300" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-black mb-2" style={{ fontFamily: "Orbitron, sans-serif" }}>Profile Required</h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Create a player name on the home screen before adding friends.
+            </p>
+          </div>
+          <Button onClick={() => setLocation("/")} className="h-12 px-8 bg-cyan-400 text-black font-black rounded-2xl">
+            Set Up Profile
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { ChevronLeft, Loader2, Lock, Globe, UserPlus, Check, Wifi, Copy, CheckCheck, AlertCircle } from "lucide-react";
+import { ChevronLeft, Loader2, Lock, Globe, UserPlus, Check, Wifi, Copy, CheckCheck, AlertCircle, User } from "lucide-react";
 import { useGameData, Friend } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,8 +55,17 @@ export default function Lobby() {
     timerRef.current = setInterval(() => setSearchTime((t) => t + 1), 1000);
   };
   const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  const myPlayer = (): LobbyPlayer[] => user ? [{ user_id: user.id, username: user.username, pfp: user.pfp, isYou: true, ping: ping ?? undefined }] : [];
+  const startLocalMatch = () => {
+    if (!mode) return;
+    mmRef.current?.cancel();
+    stopTimer();
+    setSearching(false);
+    setMatchReady(true);
+    setTimeout(() => setLocation(`/game?mode=multiplayer&type=${mode}&rounds=${roundCount}&local=1`), 900);
+  };
 
-  const handleSelectMode = (m: Mode) => { SFX.tap(); setMode(m); setView("party"); };
+  const handleSelectMode = (m: Mode) => { SFX.tap(); setMode(m); setPlayers(myPlayer()); setView("party"); };
 
   const handleSearch = () => {
     if (!user || !mode) return;
@@ -82,7 +91,11 @@ export default function Lobby() {
 
         setTimeout(() => setLocation(`/game?mode=multiplayer&type=${mode}&rounds=${roundCount}&matchId=${matchId}`), 1500);
       },
-      onError: (msg) => { setError(msg); setSearching(false); stopTimer(); },
+      onError: (msg) => {
+        setError(`${msg} Starting bot match...`);
+        setPlayers(myPlayer());
+        startLocalMatch();
+      },
     });
   };
 
@@ -111,7 +124,7 @@ export default function Lobby() {
 
         setTimeout(() => setLocation(`/game?mode=multiplayer&type=${mode}&rounds=${roundCount}&matchId=${matchId}`), 1500);
       },
-      onError: (msg) => { setError(msg); setSearching(false); stopTimer(); },
+      onError: (msg) => { setError(msg); setSearching(false); stopTimer(); setPlayers(myPlayer()); },
     });
   };
 
@@ -126,7 +139,26 @@ export default function Lobby() {
     SFX.tap(); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000);
   };
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <Layout>
+        <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full px-6 text-center gap-6 z-10">
+          <div className="w-20 h-20 rounded-3xl bg-cyan-400/10 border border-cyan-400/25 flex items-center justify-center">
+            <User className="h-9 w-9 text-cyan-300" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-black mb-2" style={{ fontFamily: "Orbitron, sans-serif" }}>Profile Required</h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Create a player name on the home screen before joining ranked multiplayer.
+            </p>
+          </div>
+          <Button onClick={() => setLocation("/")} className="h-12 px-8 bg-cyan-400 text-black font-black rounded-2xl">
+            Set Up Profile
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

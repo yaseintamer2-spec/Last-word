@@ -94,6 +94,18 @@ function pickWord(pool: string, isDaily: boolean = false): WordEntry {
   return words[Math.floor(Math.random() * words.length)];
 }
 
+const BOT_NAMES = ["Cipher", "Vortex", "Nova"];
+
+function getBotCount(type: string): number {
+  if (type === "1v1v1v1") return 3;
+  if (type === "1v1v1") return 2;
+  return 1;
+}
+
+function botScoreBoost(roundNumber: number): number {
+  return Math.floor(140 + Math.random() * 330 + roundNumber * 35);
+}
+
 // ── Match Over Screen ─────────────────────────────────────────────────────────
 function MatchOverScreen({
   playerScore, mpPlayers, onHome,
@@ -180,8 +192,13 @@ function MatchOverScreen({
 export default function Game() {
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const isMultiplayer = search.includes("mode=multiplayer");
-  const matchId       = new URLSearchParams(search).get("matchId") ?? "";
+  const params = new URLSearchParams(search);
+  const isMultiplayer = params.get("mode") === "multiplayer";
+  const matchId       = params.get("matchId") ?? "";
+  const hasRemoteMatch = isMultiplayer && Boolean(matchId);
+  const matchType = params.get("type") ?? "1v1";
+  const roundLimit = Number(params.get("rounds") ?? "5");
+  const localRanked = isMultiplayer && !hasRemoteMatch;
   const isDaily = search.includes("mode=daily");
   const { user, scores, setScores } = useGameData();
 
@@ -209,9 +226,10 @@ export default function Game() {
   const [guess, setGuess]         = useState("");
   const inputRef                  = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback]   = useState<{ kind: "correct" | "wrong" | "slow"; points?: number; praise?: string } | null>(null);
+  const savedGameOverRef          = useRef(false);
 
   useEffect(() => {
-    if (!isMultiplayer || !matchId || !user) return;
+    if (!hasRemoteMatch || !user) return;
     supabase.from('match_players').select('*').eq('match_id', matchId).order('slot').then(({ data }) => {
         if (data) setMpPlayers(data.map(p => ({ ...p, isYou: p.user_id === user.id, isEliminated: false })));
     });
@@ -230,7 +248,7 @@ export default function Game() {
       }).subscribe();
     channelRef.current = channel;
     return () => { channel.unsubscribe(); };
-  }, [isMultiplayer, matchId, user, mpPlayers]);
+  }, [hasRemoteMatch, matchId, user, mpPlayers]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tierRef = useRef(getTier(1));
@@ -241,13 +259,44 @@ export default function Game() {
   const beginRound = useCallback((r: number) => {
     const tier = getTier(r);
     tierRef.current = tier;
-    if (!isMultiplayer) setEntry(pickWord(tier.pool, isDaily));
+    if (!hasRemoteMatch) setEntry(pickWord(tier.pool, isDaily));
     setRevealed(0); setGuess(""); setFeedback(null); setCountdown(3); setGameState("COUNTDOWN");
-  }, [isDaily, isMultiplayer]);
+  }, [isDaily, hasRemoteMatch]);
+
+  useEffect(() => {
+    if (!localRanked || !user) return;
+    const bots = Array.from({ length: getBotCount(matchType) }, (_, idx) => ({
+      user_id: `bot-${idx}`,
+      username: BOT_NAMES[idx] ?? `Bot ${idx + 1}`,
+      score: 0,
+      slot: idx + 1,
+      isYou: false,
+      isEliminated: false,
+    }));
+    setMpPlayers([
+      { user_id: user.id, username: user.username, score: 0, slot: 0, isYou: true, isEliminated: false, pfp: user.pfp },
+      ...bots,
+    ]);
+    setActiveSlot(0);
+    setTurnPhase("playing");
+    setMpRound(1);
+  }, [localRanked, matchType, user?.id, user?.username, user?.pfp]);
 
   const nextRound = useCallback(async () => {
     if (isDaily && round >= 1) { setGameState("GAME_OVER"); return; }
-    if (isMultiplayer && matchId) {
+    if (localRanked) {
+      setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: scoreRef.current } : { ...p, score: p.score + botScoreBoost(round) }));
+      if (round >= roundLimit) {
+        setGameState("MATCH_OVER");
+        return;
+      }
+      const next = round + 1;
+      setRound(next);
+      setMpRound(next);
+      beginRound(next);
+      return;
+    }
+    if (hasRemoteMatch) {
       const survivors = mpPlayers.filter(p => !p.isEliminated);
       if (survivors.length <= 1) { setGameState("MATCH_OVER"); return; }
       const currentIndex = survivors.findIndex(p => p.slot === activeSlot);
@@ -261,12 +310,20 @@ export default function Game() {
     } else {
       setRound((r) => { const nr = r + 1; beginRound(nr); return nr; });
     }
-  }, [isDaily, round, beginRound, isMultiplayer, matchId, mpPlayers, activeSlot]);
+  }, [isDaily, round, roundLimit, beginRound, localRanked, hasRemoteMatch, matchId, mpPlayers, activeSlot]);
 
   const handleLifeLoss = useCallback(async (kind: "wrong" | "slow") => {
     Vibrate.error(); setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
     if (kind === "wrong") { setFeedback({ kind: "wrong" }); setGameState("FEEDBACK"); }
-    if (isMultiplayer && matchId) {
+    if (localRanked) {
+      setMpPlayers(prev => prev.map((p) => {
+        if (p.isYou) return { ...p, score: scoreRef.current, isEliminated: true };
+        return { ...p, score: p.score + botScoreBoost(round), isEliminated: false };
+      }));
+      setTimeout(() => setGameState("MATCH_OVER"), 1400);
+      return;
+    }
+    if (hasRemoteMatch) {
       await supabase.from('match_players').update({ is_eliminated: true }).eq('user_id', user?.id).eq('match_id', matchId);
       const survivors = mpPlayers.filter(p => !p.isEliminated && p.user_id !== user?.id);
       if (survivors.length === 0) setGameState("MATCH_OVER"); else nextRound();
@@ -274,7 +331,7 @@ export default function Game() {
     }
     const newLives = lives - 1; setLives(newLives);
     setTimeout(() => { if (newLives <= 0) { if (canRevive) setGameState("AD_REVIVE"); else setGameState("GAME_OVER"); } else { nextRound(); } }, 1400);
-  }, [lives, canRevive, nextRound, isMultiplayer, matchId, user, mpPlayers]);
+  }, [lives, canRevive, nextRound, localRanked, hasRemoteMatch, matchId, user, mpPlayers, round]);
 
   useEffect(() => {
     if (gameState !== "COUNTDOWN" || paused) return;
@@ -310,9 +367,14 @@ export default function Game() {
           let pts = calcPoints(revealed, entry.word.length, tierRef.current.mult);
           if (combustion > 0) pts *= 2;
           setFeedback({ kind: "correct", points: pts, praise: isFire ? "COMBUSTION!" : "GOOD!" });
-          setScore((s) => { scoreRef.current = s + pts; return s + pts; });
+          setScore((s) => {
+            const nextScore = s + pts;
+            scoreRef.current = nextScore;
+            if (localRanked) setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: nextScore } : p));
+            return nextScore;
+          });
           if (isFire) setCombustion(prev => prev + 1); else setCombustion(0);
-          if (isMultiplayer && matchId) supabase.from('match_players').update({ score: scoreRef.current }).eq('user_id', user?.id).eq('match_id', matchId).then();
+          if (hasRemoteMatch) supabase.from('match_players').update({ score: scoreRef.current }).eq('user_id', user?.id).eq('match_id', matchId).then();
           setGameState("FEEDBACK");
           setTimeout(() => nextRound(), 1400);
         }
@@ -321,7 +383,7 @@ export default function Game() {
         setCombustion(0); handleLifeLoss("wrong"); return "";
       }
     });
-  }, [entry.word, revealed, nextRound, handleLifeLoss, isMultiplayer, matchId, user, combustion]);
+  }, [entry.word, revealed, nextRound, handleLifeLoss, localRanked, hasRemoteMatch, matchId, user, combustion]);
 
   useEffect(() => {
     if (gameState !== "GUESSING" || paused) return;
@@ -331,9 +393,29 @@ export default function Game() {
 
   useEffect(() => { beginRound(1); }, [beginRound]);
 
+  useEffect(() => {
+    if (gameState !== "GAME_OVER" || isMultiplayer || savedGameOverRef.current) return;
+    savedGameOverRef.current = true;
+    const coinsEarned = Math.floor(score / 100);
+    setScores(prev => ({
+      ...prev,
+      highScore: Math.max(prev.highScore, score),
+      totalPoints: prev.totalPoints + score,
+      gamesPlayed: prev.gamesPlayed + 1,
+      roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
+      coins: prev.coins + coinsEarned,
+    }));
+    tryUnlock("first_blood");
+    if (score >= 5000) tryUnlock("score_5k");
+    if (score >= 20000) tryUnlock("score_20k");
+  }, [gameState, isMultiplayer, score, round, setScores]);
+
   const restartGame = () => {
+    savedGameOverRef.current = false;
+    scoreRef.current = 0;
     setScore(0); setLives(3); setCanRevive(true); setRound(1);
-    setMpPlayers([]); setActiveSlot(0); setTurnPhase("playing");
+    if (!localRanked) setMpPlayers([]);
+    setActiveSlot(0); setTurnPhase("playing"); setMpRound(1);
     beginRound(1);
   };
 
@@ -354,7 +436,7 @@ export default function Game() {
           </div>
           <div className="text-right flex flex-col items-end gap-0.5">
              <div className="text-xs text-muted-foreground font-mono">Round {isMultiplayer ? mpRound : round}</div>
-             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_BG[getTier(round).tier]} ${TIER_COLORS[getTier(round).tier]}`}>{getTier(round).tier}</div>
+             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_BG[getTier(isMultiplayer ? mpRound : round).tier]} ${TIER_COLORS[getTier(isMultiplayer ? mpRound : round).tier]}`}>{getTier(isMultiplayer ? mpRound : round).tier}</div>
           </div>
         </div>
 
@@ -369,6 +451,8 @@ export default function Game() {
           )}
 
           {gameState === "MATCH_OVER" && <MatchOverScreen playerScore={score} mpPlayers={mpPlayers} onHome={() => setLocation("/")} />}
+          {gameState === "AD_REVIVE" && <AdReviveModal onDecline={() => setGameState("GAME_OVER")} onRevive={() => { setCanRevive(false); setLives(1); nextRound(); }} />}
+          {gameState === "INTERSTITIAL" && <InterstitialAd onDone={() => nextRound()} />}
 
           <AnimatePresence mode="wait">
             {gameState === "COUNTDOWN" && <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 1.5, opacity: 0 }} className="text-9xl font-black">{countdown > 0 ? countdown : "GO!"}</motion.div>}

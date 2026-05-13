@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 
 export type User = {
   id: string;
-  display_id: number;
+  display_id?: number;
   username: string;
   pfp?: string;
 };

@@ -70,7 +70,7 @@ export function startMatchmaking(opts: {
       .insert({ mode, round_count: roundCount, status: 'active' })
       .select('id').single();
 
-    if (matchErr || !m) { onError('Failed to create match.'); return; }
+    if (matchErr || !m) { onError(matchErr?.message || 'Failed to create match.'); return; }
 
     await supabase.from('match_players').insert(
       players.map((p, slot) => ({
@@ -91,7 +91,7 @@ export function startMatchmaking(opts: {
       user_id: userId, username, pfp: pfp ?? null,
       mode, round_count: roundCount, status: 'searching', is_private: false,
     });
-    if (error) { onError('Could not join matchmaking.'); return; }
+    if (error) { onError(error.message || 'Could not join matchmaking.'); return; }
     onUpdate([me]);
 
     poolChannel = supabase.channel(`mm_${mode}_${roundCount}`)
@@ -163,10 +163,10 @@ export function joinPrivateParty(opts: {
     if (cancelled) return;
     const ids = players.map((p) => p.user_id);
     await supabase.from('mm_pool').update({ status: 'matched' }).in('user_id', ids);
-    const { data: m } = await supabase.from('matches')
+    const { data: m, error: matchErr } = await supabase.from('matches')
       .insert({ mode, round_count: roundCount, status: 'active', party_code: partyCode })
       .select('id').single();
-    if (!m) { onError('Failed to create match.'); return; }
+    if (matchErr || !m) { onError(matchErr?.message || 'Failed to create match.'); return; }
     await supabase.from('match_players').insert(
       players.map((p, slot) => ({
         match_id: m.id, user_id: p.user_id, username: p.username,
@@ -179,11 +179,12 @@ export function joinPrivateParty(opts: {
 
   async function run() {
     await supabase.from('mm_pool').delete().eq('user_id', userId);
-    await supabase.from('mm_pool').insert({
+    const { error } = await supabase.from('mm_pool').insert({
       user_id: userId, username, pfp: pfp ?? null,
       mode, round_count: roundCount, status: 'searching',
       is_private: true, party_code: partyCode,
     });
+    if (error) { onError(error.message || 'Could not join private party.'); return; }
     onUpdate([me]);
 
     channel = supabase.channel(`party_${partyCode}`)
