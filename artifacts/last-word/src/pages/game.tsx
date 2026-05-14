@@ -458,9 +458,21 @@ export default function Game() {
           {isMultiplayer && (turnPhase === "focus" || !isMyTurn) && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl">
               <div className="w-24 h-24 rounded-3xl border-2 border-cyan-400/50 bg-cyan-400/10 flex items-center justify-center overflow-hidden shadow-2xl">
-                {activePlayer?.pfp ? <img src={activePlayer.pfp} className="w-full h-full object-cover" alt="" /> : <span className="text-4xl font-black text-cyan-400">{(activePlayer?.username?.[0] ?? "?").toUpperCase()}</span>}
+                {activePlayer?.pfp ? <img src={activePlayer.pfp} className="w-full h-full object-cover" /> : <span className="text-4xl font-black text-cyan-400">{(activePlayer?.username?.[0] ?? "?").toUpperCase()}</span>}
               </div>
-              <div className="text-center mt-4"><p className="text-sm font-mono text-cyan-400/60 uppercase tracking-widest">{isMyTurn ? "Your Turn" : "Opponent Turn"}</p><h2 className="text-3xl font-black text-white">{activePlayer?.username}</h2></div>
+              <div className="text-center mt-4">
+                <p className="text-sm font-mono text-cyan-400/60 uppercase tracking-widest">{isMyTurn ? "Your Turn" : "Opponent Turn"}</p>
+                <h2 className="text-3xl font-black text-white">{activePlayer?.username}</h2>
+              </div>
+
+              {mpPlayers.find(p => p.isYou)?.isEliminated && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8 flex flex-col items-center gap-3">
+                    <p className="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">You are spectating</p>
+                    <Button onClick={() => setLocation("/")} variant="outline" className="border-white/10 text-white/50 hover:text-white rounded-xl h-10 px-6">
+                        Exit to Home
+                    </Button>
+                </motion.div>
+              )}
             </motion.div>
           )}
 
