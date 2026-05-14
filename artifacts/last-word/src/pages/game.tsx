@@ -44,8 +44,24 @@ const HARD_WORDS: WordEntry[] = [
   { word: "CIRCUIT",  hint: "Complete path" },
 ];
 
+const SLANG_WORDS: WordEntry[] = [
+  { word: "NOOB",   hint: "Inexperienced player" },
+  { word: "GOAT",   hint: "Greatest of all time" },
+  { word: "CAP",    hint: "That's a lie" },
+  { word: "BET",    hint: "I agree / challenge accepted" },
+  { word: "SUS",    hint: "Very suspicious" },
+  { word: "RIZZ",   hint: "Charisma / attraction" },
+  { word: "SKIBIDI",hint: "Brain rot meme" },
+  { word: "BRUH",   hint: "Disbelief expression" },
+  { word: "YEET",   hint: "Throw with force" },
+  { word: "VIBE",   hint: "Atmosphere or mood" },
+];
+
 const POOL: Record<string, WordEntry[]> = {
-  easy: HARD_WORDS, medium: HARD_WORDS, hard: HARD_WORDS, insane: HARD_WORDS,
+  easy: [...EASY_WORDS, ...SLANG_WORDS],
+  medium: [...EASY_WORDS, ...SLANG_WORDS],
+  hard: [...EASY_WORDS, ...SLANG_WORDS],
+  insane: [...EASY_WORDS, ...SLANG_WORDS],
 };
 
 // ── Tiers ─────────────────────────────────────────────────────────────────────
@@ -351,6 +367,10 @@ export default function Game() {
           const isFire = timeTaken < 1200;
           Vibrate.success();
           let pts = calcPoints(revealed, entry.word.length, tierRef.current.mult);
+
+          // Coins per round logic: 10 coins base + 5 for combustion
+          const earnedCoins = 10 + (isFire ? 5 : 0);
+
           if (combustion > 0) pts *= 2;
           setFeedback({ kind: "correct", points: pts, praise: isFire ? "COMBUSTION!" : "GOOD!" });
           setScore((s) => {
@@ -359,6 +379,10 @@ export default function Game() {
             setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: nextScore } : p));
             return nextScore;
           });
+
+          // Award coins instantly per round
+          setScores(prev => ({ ...prev, coins: prev.coins + earnedCoins }));
+
           if (isFire) setCombustion(prev => prev + 1); else setCombustion(0);
           if (hasRemoteMatch) supabase.from('match_players').update({ score: scoreRef.current }).eq('user_id', user?.id).eq('match_id', matchId).then();
           setGameState("FEEDBACK");
@@ -507,10 +531,23 @@ export default function Game() {
               </motion.div>
             )}
             {gameState === "GAME_OVER" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-6 text-center">
-                <h2 className="text-5xl font-black text-red-400">GAME OVER</h2>
-                <div className="grid grid-cols-2 gap-3 w-full"><div className="bg-white/5 p-4 rounded-2xl">Score: {score}</div><div className="bg-white/5 p-4 rounded-2xl">Best: {scores.highScore}</div></div>
-                <Button onClick={restartGame} className="w-full h-12 bg-cyan-400 text-black font-bold">Play Again</Button>
+              <motion.div key="gameover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-6 w-full max-w-xs text-center">
+                <h2 className="text-5xl font-black text-red-400">MATCH ENDED</h2>
+                <div className="flex flex-col gap-3 w-full">
+                   <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Rank Reached</div>
+                      <div className={`text-2xl font-black ${getRank(scores.rankScore).color}`}>{getRank(scores.rankScore).name}</div>
+                   </div>
+                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Match Score</div>
+                      <div className="text-xl font-bold font-mono">{score.toLocaleString()}</div>
+                   </div>
+                </div>
+                <Button onClick={handleShare} className="w-full h-14 bg-emerald-500 text-black font-black text-lg rounded-2xl shadow-lg">
+                  <Share2 className="mr-2" /> SHARE RANK
+                </Button>
+                <Button onClick={restartGame} className="w-full h-12 bg-cyan-400 text-black font-bold rounded-xl">PLAY AGAIN</Button>
+                <Button variant="outline" onClick={() => setLocation("/")} className="w-full h-10 border-white/10 text-white/40">HOME</Button>
               </motion.div>
             )}
           </AnimatePresence>

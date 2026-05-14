@@ -5,18 +5,15 @@ export type User = {
   id: string;
   display_id?: number;
   username: string;
-  pfp?: string;
+  badge: string; // Default: "Guest"
 };
 
 export type Scores = {
-  highScore: number;
   totalPoints: number;
   gamesPlayed: number;
   roundRecord: number;
   rankScore: number;
   coins: number;
-  placementGamesPlayed?: number;
-  placementComplete?: boolean;
 };
 
 export type Friend = {
@@ -57,7 +54,7 @@ export function getRank(score: number) {
   return [...RANKS].reverse().find(r => score >= r.min) || RANKS[0];
 }
 
-const DEFAULT_SCORES: Scores = { highScore: 0, totalPoints: 0, gamesPlayed: 0, roundRecord: 0, rankScore: 0, coins: 0 };
+const DEFAULT_SCORES: Scores = { totalPoints: 0, gamesPlayed: 0, roundRecord: 0, rankScore: 0, coins: 0 };
 
 export function useStore<T>(key: string, initialValue: T): [T, (val: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
@@ -140,7 +137,7 @@ export function useGameData() {
     if (user) {
       // Sync to Leaderboard
       await supabase.from('leaderboard').upsert({
-        user_id: user.id, username: user.username, high_score: newScores.highScore, updated_at: new Date().toISOString()
+        user_id: user.id, username: user.username, high_score: newScores.rankScore, updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
 
       // Sync to Profile (RP and Coins)
@@ -162,12 +159,13 @@ export function useGameData() {
   const setUser = async (newUser: User | null) => {
     if (newUser) {
       const { data, error } = await supabase.from('profiles').upsert({
-        id: newUser.id, username: newUser.username, pfp: newUser.pfp, updated_at: new Date().toISOString()
-      }).select('display_id, rank_score, coins').single();
+        id: newUser.id, username: newUser.username, badge: newUser.badge, updated_at: new Date().toISOString()
+      }).select('display_id, rank_score, coins, badge').single();
 
       if (data && !error) {
         newUser.display_id = data.display_id;
-        // Sync cloud score back to local if higher or first run
+        newUser.badge = data.badge || "Guest";
+        // Sync cloud stats back to local
         setScores(prev => ({
           ...prev,
           rankScore: Math.max(prev.rankScore, data.rank_score || 0),

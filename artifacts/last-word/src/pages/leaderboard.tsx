@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { ChevronLeft, Trophy, Calendar, Gamepad2 } from "lucide-react";
-import { useGameData } from "@/lib/store";
+import { useGameData, getRank } from "@/lib/store";
 import { Layout } from "@/components/layout";
 import { motion } from "framer-motion";
 import { getDailyLeaderboard, isTodayCompleted, getDailyState } from "@/lib/daily";
@@ -20,20 +20,21 @@ export default function Leaderboard() {
   const [, setLocation]               = useLocation();
   const [tab, setTab]                 = useState<Tab>("alltime");
 
-  // All-time board — merge seeded data with player's own best
+  // All-time board — based on Global RP
   const combined = [...leaderboard];
-  if (user && scores.highScore > 0) {
+  if (user && scores.rankScore > 0) {
     const idx = combined.findIndex((l) => l.username === user.username);
-    if (idx >= 0) { if (scores.highScore > combined[idx].score) combined[idx] = { ...combined[idx], score: scores.highScore }; }
-    else combined.push({ username: user.username, score: scores.highScore });
+    if (idx >= 0) { if (scores.rankScore > combined[idx].score) combined[idx] = { ...combined[idx], score: scores.rankScore }; }
+    else combined.push({ username: user.username, score: scores.rankScore });
   }
   const allTime = combined.sort((a, b) => b.score - a.score).slice(0, 10);
 
-  // Daily leaderboard
-  const dailyScore = isTodayCompleted() ? (getDailyState()?.score ?? 0) : 0;
-  const daily      = getDailyLeaderboard(user?.username ?? "You", dailyScore);
+  // Daily leaderboard — based on simulated streaks
+  const daily = getDailyLeaderboard(user?.username ?? "You", isTodayCompleted() ? (getDailyState()?.streak ?? 0) : 0);
 
-  const rows = tab === "alltime" ? allTime.map((e) => ({ name: e.username, score: e.score })) : daily.map((e) => ({ name: e.name, score: e.score }));
+  const rows = tab === "alltime"
+    ? allTime.map((e) => ({ name: e.username, score: e.score }))
+    : daily.map((e) => ({ name: e.name, score: e.score }));
 
   return (
     <Layout>
@@ -68,6 +69,8 @@ export default function Leaderboard() {
           {rows.map((entry, idx) => {
             const isMe    = user && entry.name === user.username;
             const rankSt  = RANK_STYLES[idx];
+            const displayRank = tab === "alltime" ? getRank(entry.score) : null;
+
             return (
               <motion.div key={`${entry.name}-${idx}`}
                 initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
@@ -76,14 +79,18 @@ export default function Leaderboard() {
                   background:   isMe ? "rgba(34,211,238,0.06)" : "rgba(255,255,255,0.03)",
                   borderColor:  isMe ? "rgba(34,211,238,0.3)"  : "rgba(255,255,255,0.07)",
                 }}>
-                {/* Rank badge */}
+                {/* Rank badge / Medal */}
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold border ${rankSt ? `${rankSt.bg} ${rankSt.border}` : "bg-white/5 border-white/10"}`}>
                   {rankSt ? rankSt.icon : <span className="text-muted-foreground text-xs">{idx + 1}</span>}
                 </div>
 
-                {/* Avatar */}
-                <div className="w-9 h-9 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                  {entry.name[0].toUpperCase()}
+                {/* Avatar / Rank Icon */}
+                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 flex-shrink-0">
+                  {displayRank ? (
+                    <img src={displayRank.icon} className="w-full h-full object-contain" alt="" />
+                  ) : (
+                    <span className="font-bold text-sm">{entry.name[0].toUpperCase()}</span>
+                  )}
                 </div>
 
                 {/* Name */}
@@ -92,12 +99,22 @@ export default function Leaderboard() {
                     {entry.name}
                     {isMe && <span className="ml-2 text-[10px] font-mono bg-cyan-400/15 text-cyan-400 px-1.5 py-0.5 rounded-full">YOU</span>}
                   </span>
+                  {displayRank && (
+                    <span className={`text-[9px] font-black uppercase tracking-tighter ${displayRank.color}`}>
+                      {displayRank.name}
+                    </span>
+                  )}
                 </div>
 
-                {/* Score */}
-                <span className={`font-mono font-bold text-sm tabular-nums ${isMe ? "text-cyan-400" : rankSt ? rankSt.text : "text-foreground"}`}>
-                  {entry.score.toLocaleString()}
-                </span>
+                {/* Score / RP / Streak */}
+                <div className="text-right">
+                  <span className={`font-mono font-bold text-sm tabular-nums block ${isMe ? "text-cyan-400" : rankSt ? rankSt.text : "text-foreground"}`}>
+                    {entry.score.toLocaleString()}
+                  </span>
+                  <span className="text-[8px] font-mono text-white/20 uppercase tracking-widest">
+                    {tab === "alltime" ? "RP" : "STREAK"}
+                  </span>
+                </div>
               </motion.div>
             );
           })}

@@ -5,7 +5,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 export type LobbyPlayer = {
   user_id:   string;
   username:  string;
-  pfp?:      string;
+  badge:     string; // "Guest", etc.
   ping?:     number;
   isYou?:    boolean;
   isFriend?: boolean;
@@ -21,22 +21,22 @@ export async function estimatePing(): Promise<number> {
 
 // ── Global matchmaking ────────────────────────────────────────────────────────
 export function startMatchmaking(opts: {
-  userId: string; username: string; pfp?: string;
+  userId: string; username: string; badge: string;
   mode: string; roundCount: number; totalPlayers: number;
   onUpdate: (players: LobbyPlayer[]) => void;
   onReady:  (matchId: string, players: LobbyPlayer[]) => void;
   onError:  (msg: string) => void;
 }): MatchmakingHandle {
-  const { userId, username, pfp, mode, roundCount, totalPlayers, onUpdate, onReady, onError } = opts;
+  const { userId, username, badge, mode, roundCount, totalPlayers, onUpdate, onReady, onError } = opts;
   let cancelled = false;
   let poolChannel: RealtimeChannel | null = null;
   let waitChannel: RealtimeChannel | null = null;
-  const me: LobbyPlayer = { user_id: userId, username, pfp, isYou: true };
+  const me: LobbyPlayer = { user_id: userId, username, badge, isYou: true };
 
   async function checkPool() {
     if (cancelled) return;
     const { data } = await supabase
-      .from('mm_pool').select('user_id,username,pfp')
+      .from('mm_pool').select('user_id,username,badge')
       .eq('mode', mode).eq('round_count', roundCount)
       .eq('status', 'searching').eq('is_private', false)
       .order('created_at', { ascending: true }).limit(totalPlayers);
@@ -44,7 +44,7 @@ export function startMatchmaking(opts: {
 
     const list: LobbyPlayer[] = data.map((p) => ({
       user_id: p.user_id, username: p.username,
-      pfp: p.pfp ?? undefined, isYou: p.user_id === userId,
+      badge: p.badge || "Guest", isYou: p.user_id === userId,
     }));
     if (!list.find((p) => p.user_id === userId)) list.unshift(me);
     onUpdate(list);
@@ -75,11 +75,9 @@ export function startMatchmaking(opts: {
     await supabase.from('match_players').insert(
       players.map((p, slot) => ({
         match_id: m.id, user_id: p.user_id, username: p.username,
-        pfp: p.pfp ?? null, score: 0, slot, is_ready: true,
+        badge: p.badge, score: 0, slot, is_ready: true,
       }))
     );
-
-    // Match state is initialized by the lobby.tsx onReady now
 
     await supabase.from('mm_pool').delete().in('user_id', ids);
     if (!cancelled) onReady(m.id, players);
@@ -88,7 +86,7 @@ export function startMatchmaking(opts: {
   async function run() {
     await supabase.from('mm_pool').delete().eq('user_id', userId);
     const { error } = await supabase.from('mm_pool').insert({
-      user_id: userId, username, pfp: pfp ?? null,
+      user_id: userId, username, badge,
       mode, round_count: roundCount, status: 'searching', is_private: false,
     });
     if (error) { onError(error.message || 'Could not join matchmaking.'); return; }
@@ -105,11 +103,11 @@ export function startMatchmaking(opts: {
           if (cancelled) return;
           const matchId = payload.new.match_id as string;
           const { data } = await supabase.from('match_players')
-            .select('user_id,username,pfp,slot').eq('match_id', matchId).order('slot');
+            .select('user_id,username,badge,slot').eq('match_id', matchId).order('slot');
           if (!data) return;
           const list: LobbyPlayer[] = data.map((p) => ({
             user_id: p.user_id, username: p.username,
-            pfp: p.pfp ?? undefined, isYou: p.user_id === userId,
+            badge: p.badge || "Guest", isYou: p.user_id === userId,
           }));
           onReady(matchId, list);
       }).subscribe();
@@ -131,26 +129,26 @@ export function startMatchmaking(opts: {
 
 // ── Private party ─────────────────────────────────────────────────────────────
 export function joinPrivateParty(opts: {
-  userId: string; username: string; pfp?: string;
+  userId: string; username: string; badge: string;
   mode: string; roundCount: number; totalPlayers: number; partyCode: string;
   onUpdate: (players: LobbyPlayer[]) => void;
   onReady:  (matchId: string, players: LobbyPlayer[]) => void;
   onError:  (msg: string) => void;
 }): MatchmakingHandle {
-  const { userId, username, pfp, mode, roundCount, totalPlayers, partyCode, onUpdate, onReady, onError } = opts;
+  const { userId, username, badge, mode, roundCount, totalPlayers, partyCode, onUpdate, onReady, onError } = opts;
   let cancelled = false;
   let channel: RealtimeChannel | null = null;
-  const me: LobbyPlayer = { user_id: userId, username, pfp, isYou: true };
+  const me: LobbyPlayer = { user_id: userId, username, badge, isYou: true };
 
   async function checkPool() {
     if (cancelled) return;
-    const { data } = await supabase.from('mm_pool').select('user_id,username,pfp')
+    const { data } = await supabase.from('mm_pool').select('user_id,username,badge')
       .eq('party_code', partyCode).eq('status', 'searching')
       .order('created_at', { ascending: true });
     if (!data) return;
     const list: LobbyPlayer[] = data.map((p) => ({
       user_id: p.user_id, username: p.username,
-      pfp: p.pfp ?? undefined, isYou: p.user_id === userId,
+      badge: p.badge || "Guest", isYou: p.user_id === userId,
     }));
     if (!list.find((p) => p.user_id === userId)) list.unshift(me);
     onUpdate(list);
@@ -170,7 +168,7 @@ export function joinPrivateParty(opts: {
     await supabase.from('match_players').insert(
       players.map((p, slot) => ({
         match_id: m.id, user_id: p.user_id, username: p.username,
-        pfp: p.pfp ?? null, score: 0, slot, is_ready: true,
+        badge: p.badge, score: 0, slot, is_ready: true,
       }))
     );
     await supabase.from('mm_pool').delete().in('user_id', ids);
@@ -180,7 +178,7 @@ export function joinPrivateParty(opts: {
   async function run() {
     await supabase.from('mm_pool').delete().eq('user_id', userId);
     const { error } = await supabase.from('mm_pool').insert({
-      user_id: userId, username, pfp: pfp ?? null,
+      user_id: userId, username, badge,
       mode, round_count: roundCount, status: 'searching',
       is_private: true, party_code: partyCode,
     });
@@ -198,11 +196,11 @@ export function joinPrivateParty(opts: {
           if (cancelled) return;
           const matchId = payload.new.match_id as string;
           const { data } = await supabase.from('match_players')
-            .select('user_id,username,pfp,slot').eq('match_id', matchId).order('slot');
+            .select('user_id,username,badge,slot').eq('match_id', matchId).order('slot');
           if (!data) return;
           const list: LobbyPlayer[] = data.map((p) => ({
             user_id: p.user_id, username: p.username,
-            pfp: p.pfp ?? undefined, isYou: p.user_id === userId,
+            badge: p.badge || "Guest", isYou: p.user_id === userId,
           }));
           onReady(matchId, list);
       }).subscribe();

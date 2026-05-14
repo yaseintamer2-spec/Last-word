@@ -134,7 +134,8 @@ export default function DailyChallenge() {
 
   const handleShare = () => {
     const state = getDailyState();
-    const text  = `🎯 Last Word Daily\n📅 ${new Date().toLocaleDateString()}\n⭐ Score: ${state?.score ?? 0}\n🔤 Stopped at ${state?.revealed ?? 0}/${word.length} letters\nPlay: lastword.app`;
+    const rank = getRank(scores.rankScore);
+    const text  = `🎯 Last Word Daily Challenge\n📅 ${new Date().toLocaleDateString()}\n🔥 Streak: ${state?.streak ?? 0} days\n🏆 Rank: ${rank.name}\nPlay: lastword.app`;
     if (navigator.share) {
       navigator.share({ title: "Last Word Daily", text }).catch(() => {});
     } else if (navigator.clipboard) {
@@ -260,18 +261,18 @@ export default function DailyChallenge() {
                   <div className="text-sm text-muted-foreground font-mono">The word was: <span className="text-white font-bold">{word}</span></div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 w-full">
-                  <div className="bg-card border border-card-border rounded-2xl p-3 text-center">
-                    <div className="text-xs text-muted-foreground font-mono mb-1">Score</div>
-                    <div className="text-xl font-bold text-cyan-400 font-mono">{score.toLocaleString()}</div>
+                <div className="grid grid-cols-2 gap-3 w-full">
+                  <div className="bg-card border border-card-border rounded-2xl p-4 text-center">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mb-1">Status</div>
+                    <div className={`text-xl font-black ${score > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {score > 0 ? 'SURVIVED' : 'FAILED'}
+                    </div>
                   </div>
-                  <div className="bg-card border border-card-border rounded-2xl p-3 text-center">
-                    <div className="text-xs text-muted-foreground font-mono mb-1">Revealed</div>
-                    <div className="text-xl font-bold font-mono">{revealedCount}/{word.length}</div>
-                  </div>
-                  <div className="bg-card border border-card-border rounded-2xl p-3 text-center">
-                    <div className="text-xs text-muted-foreground font-mono mb-1 flex items-center justify-center gap-1"><Flame className="h-3 w-3 fill-orange-400 text-orange-400" />Streak</div>
-                    <div className="text-xl font-bold text-orange-400 font-mono">{streak}</div>
+                  <div className="bg-card border border-card-border rounded-2xl p-4 text-center">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mb-1 flex items-center justify-center gap-1">
+                      <Flame className="h-3 w-3 fill-orange-400 text-orange-400" />Streak
+                    </div>
+                    <div className="text-2xl font-black text-orange-400 font-mono">{streak}</div>
                   </div>
                 </div>
 

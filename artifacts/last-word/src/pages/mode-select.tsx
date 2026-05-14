@@ -14,22 +14,22 @@ export default function ModeSelect() {
     {
       id: "ranked",
       name: "RANKED BATTLE",
-      desc: "Fight for RP. Elimination mode enabled.",
+      desc: "Fight for RP. Competitive rules.",
       icon: <Swords className="h-6 w-6" />,
       color: "from-red-500/20 to-orange-500/20",
       border: "border-orange-500/30",
       accent: "#f97316",
-      path: "/lobby"
+      path: "/lobby?ranked=true"
     },
     {
-      id: "solo",
-      name: "SOLO TRAINING",
-      desc: "Offline practice. Break your personal best.",
-      icon: <User className="h-6 w-6" />,
+      id: "unranked",
+      name: "UNRANKED FUN",
+      desc: "Casual play. No RP at stake.",
+      icon: <Globe className="h-6 w-6" />,
       color: "from-cyan-500/20 to-blue-500/20",
       border: "border-cyan-500/30",
       accent: "#22d3ee",
-      path: "/game"
+      path: "/lobby?ranked=false"
     },
     {
         id: "daily",

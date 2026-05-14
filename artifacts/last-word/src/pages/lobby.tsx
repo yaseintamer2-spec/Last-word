@@ -71,7 +71,7 @@ export default function Lobby() {
     if (!user || !mode) return;
     SFX.tap(); setError(""); setSearching(true); setMatchReady(false); startTimer();
     mmRef.current = startMatchmaking({
-      userId: user.id, username: user.username, pfp: user.pfp,
+      userId: user.id, username: user.username, badge: user.badge,
       mode, roundCount, totalPlayers,
       onUpdate: (p) => setPlayers(p),
       onReady:  (matchId, p) => {
@@ -104,7 +104,7 @@ export default function Lobby() {
     const code = (joinCode.trim() || partyCode).toUpperCase();
     SFX.tap(); setError(""); setSearching(true); setMatchReady(false); startTimer();
     mmRef.current = joinPrivateParty({
-      userId: user.id, username: user.username, pfp: user.pfp,
+      userId: user.id, username: user.username, badge: user.badge,
       mode, roundCount, totalPlayers, partyCode: code,
       onUpdate: (p) => setPlayers(p),
       onReady:  (matchId, p) => {
@@ -329,13 +329,10 @@ export default function Lobby() {
                       player?.isYou ? "border-cyan-400/35 bg-cyan-400/6" : player ? "border-white/12 bg-white/4" : "border-dashed border-white/8 bg-white/2"}`}>
                       {player ? (
                         <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center gap-2 w-full">
-                          {/* PFP */}
-                          <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 flex items-center justify-center"
-                            style={{ borderColor: player.isYou ? "rgba(34,211,238,0.5)" : "rgba(255,255,255,0.15)", background: player.isYou ? "rgba(34,211,238,0.1)" : "rgba(255,255,255,0.06)" }}>
-                            {player.pfp
-                              ? <img src={player.pfp} className="w-full h-full object-cover" alt="" />
-                              : <span className="text-lg font-black" style={{ color: player.isYou ? "#22d3ee" : "#fff" }}>{player.username[0].toUpperCase()}</span>
-                            }
+                          {/* Badge */}
+                          <div className="w-12 h-12 rounded-full overflow-hidden border-2 flex items-center justify-center bg-black/20"
+                            style={{ borderColor: player.isYou ? "rgba(34,211,238,0.5)" : "rgba(255,255,255,0.15)" }}>
+                            <span className="text-[10px] font-black font-mono text-white/40">{player.badge.toUpperCase()}</span>
                           </div>
                           <span className="text-sm font-bold text-center leading-tight truncate max-w-full">{player.username}</span>
                           {player.isYou ? (

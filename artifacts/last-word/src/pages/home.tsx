@@ -312,13 +312,15 @@ function Logo() {
   );
 }
 
-// ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ pfp, username, size = 9 }: { pfp?: string; username?: string; size?: number }) {
+// ── Badge ────────────────────────────────────────────────────────────────────
+function Badge({ type, size = 9 }: { type: string; size?: number }) {
   const cls = `w-${size} h-${size}`;
-  if (pfp) return <img src={pfp} alt="Profile" className={`${cls} rounded-full object-cover border-2 border-white/15`} />;
+  const isGuest = type === "Guest";
   return (
-    <div className={`${cls} rounded-full bg-gradient-to-br from-cyan-400/20 to-violet-500/20 border border-white/15 flex items-center justify-center text-xs font-bold font-mono text-white/70`}>
-      {username ? username.slice(0, 2).toUpperCase() : "?"}
+    <div className={`${cls} rounded-full bg-gradient-to-br ${isGuest ? 'from-slate-400/20 to-slate-600/20' : 'from-cyan-400/20 to-violet-500/20'} border-2 border-white/10 flex flex-col items-center justify-center overflow-hidden shadow-inner relative group`}>
+      <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <span className="text-[10px] font-black font-mono text-white/40 tracking-tighter leading-none mb-0.5">{type.toUpperCase()}</span>
+      <div className="w-4 h-0.5 bg-white/20 rounded-full" />
     </div>
   );
 }
@@ -329,33 +331,17 @@ export default function Home() {
   const [, setLocation] = useLocation();
 
   const [showUserModal, setShowUserModal] = useState(false);
-  const [showMenu, setShowMenu]           = useState(false);
   const [usernameInput, setUsernameInput] = useState(user?.username ?? "");
-  const [pfpPreview, setPfpPreview]       = useState<string | undefined>(user?.pfp);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const menuRef      = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPfpPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  }, []);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = usernameInput.trim();
     if (trimmed.length >= 2) {
-      setUser({ id: user?.id ?? crypto.randomUUID(), username: trimmed.substring(0, 15), pfp: pfpPreview });
+      setUser({
+        id: user?.id ?? crypto.randomUUID(),
+        username: trimmed.substring(0, 15),
+        badge: user?.badge ?? "Guest"
+      });
       setShowUserModal(false);
     }
   };
@@ -379,27 +365,30 @@ export default function Home() {
         {/* ── Top bar ──────────────────────────────────────────────────── */}
         <div className="relative z-10 flex items-center justify-between px-4 pt-4 pb-2">
           <div className="text-sm font-mono">
-            {scores.highScore > 0 && (
+            {scores.rankScore > 0 && (
               <motion.div
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.5 }}
                 className="flex items-center gap-1.5"
               >
-                <Star className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400" />
-                <span className="text-muted-foreground">Best</span>
-                <span className="text-cyan-400 font-bold">{scores.highScore.toLocaleString()}</span>
+                <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10">
+                  <img src={getRank(scores.rankScore).icon} className="w-full h-full object-contain" />
+                </div>
+                <span className={`font-black uppercase text-[10px] ${getRank(scores.rankScore).color}`}>
+                  {getRank(scores.rankScore).name}
+                </span>
               </motion.div>
             )}
           </div>
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => { setUsernameInput(user?.username ?? ""); setPfpPreview(user?.pfp); setShowUserModal(true); }}
+              onClick={() => { setUsernameInput(user?.username ?? ""); setShowUserModal(true); }}
               className="p-1 rounded-full hover:bg-white/5 transition-colors"
               data-testid="button-user-profile"
             >
-              <Avatar pfp={user?.pfp} username={user?.username} size={9} />
+              <Badge type={user?.badge ?? "Guest"} size={9} />
             </button>
 
             <button
@@ -522,28 +511,25 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* Stats */}
-          {scores.gamesPlayed > 0 && (
+          {/* Stats replaced by global status */}
+          {user && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.7 }}
-              className="grid grid-cols-3 gap-2 w-full max-w-xs"
+              className="grid grid-cols-2 gap-3 w-full max-w-xs"
             >
-              {[
-                { label: "Best",      value: scores.highScore.toLocaleString(), color: "#22d3ee" },
-                { label: "Games",     value: scores.gamesPlayed.toString(),      color: "#ffffff" },
-                { label: "Top Round", value: scores.roundRecord.toString(),      color: "#fbbf24" },
-              ].map((s) => (
-                <div
-                  key={s.label}
-                  className="rounded-2xl border p-3 text-center"
-                  style={{ background: "rgba(255,255,255,0.025)", borderColor: "rgba(255,255,255,0.07)" }}
-                >
-                  <div className="text-xl font-bold font-mono tabular-nums" style={{ color: s.color }}>{s.value}</div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5 font-mono">{s.label}</div>
-                </div>
-              ))}
+              <div className="rounded-3xl border border-white/5 bg-black/20 p-4 text-center shadow-inner relative overflow-hidden group">
+                <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="text-2xl font-black font-mono text-yellow-500 tabular-nums relative z-10">{scores.coins.toLocaleString()}</div>
+                <div className="text-[10px] text-yellow-500/40 uppercase tracking-[0.2em] font-black relative z-10">Total Coins</div>
+              </div>
+
+              <div className="rounded-3xl border border-white/5 bg-black/20 p-4 text-center shadow-inner relative overflow-hidden group">
+                <div className="absolute inset-0 bg-cyan-400/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="text-2xl font-black font-mono text-cyan-400 tabular-nums relative z-10">{scores.rankScore.toLocaleString()}</div>
+                <div className="text-[10px] text-cyan-400/40 uppercase tracking-[0.2em] font-black relative z-10">Global RP</div>
+              </div>
             </motion.div>
           )}
         </div>
@@ -583,27 +569,12 @@ export default function Home() {
               <form onSubmit={handleSave} className="flex flex-col gap-6">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 group-hover:border-cyan-400/50 transition-all duration-300">
-                      {pfpPreview ? (
-                        <img src={pfpPreview} alt="Profile" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-cyan-400/10 to-violet-500/10 flex items-center justify-center">
-                          <Camera className="h-8 w-8 text-white/20" />
-                        </div>
-                      )}
+                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 group-hover:border-cyan-400/50 transition-all duration-300 flex items-center justify-center bg-black/40 shadow-inner">
+                      <Badge type={user?.badge ?? "Guest"} size={16} />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="absolute -bottom-2 -right-2 w-9 h-9 rounded-2xl text-black flex items-center justify-center shadow-lg active:scale-90 transition-transform"
-                      style={{ background: "linear-gradient(135deg, #22d3ee, #06b6d4)" }}
-                    >
-                      <Camera className="h-4 w-4" />
-                    </button>
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                   <div className="text-center">
-                    <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Profile Identity</p>
+                    <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Active Badge</p>
                   </div>
                 </div>
 
