@@ -255,20 +255,27 @@ function Section({ label, accent = "#fff", children }: { label: string; accent?:
 }
 
 function FriendRow({ friend, online, children }: { friend: any; online?: boolean; children?: React.ReactNode }) {
+  const badge = friend.badge || "Guest";
+  const isGuest = badge === "Guest";
+
   return (
     <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       className="flex items-center justify-between px-3 py-3 rounded-2xl bg-white/5 border border-white/10">
       <div className="flex items-center gap-3">
         <div className="relative">
-          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden">
-             <span className="font-bold">{friend.username[0]}</span>
+          <div className={`w-10 h-10 rounded-full border-2 border-white/10 flex flex-col items-center justify-center overflow-hidden shadow-inner bg-gradient-to-br ${isGuest ? 'from-slate-400/10 to-slate-600/10' : 'from-cyan-400/10 to-violet-500/10'}`}>
+             <span className="text-[7px] font-black font-mono text-white/30 tracking-tighter leading-none mb-0.5">{badge.toUpperCase()}</span>
+             <div className="w-3 h-0.5 bg-white/10 rounded-full" />
           </div>
           {online !== undefined && (
-            <span className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-background ${online ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/10"}`} />
+            <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background ${online ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/10"}`} />
           )}
         </div>
         <div className="flex flex-col">
-          <span className="font-bold text-sm leading-none">{friend.username}</span>
+          <span className="font-bold text-sm leading-none flex items-center gap-2">
+            {friend.username}
+            <span className="text-[9px] font-mono text-white/20">#{friend.display_id}</span>
+          </span>
           <span className="text-[9px] font-mono text-white/20 mt-1 uppercase">{online ? "Active Now" : "Offline"}</span>
         </div>
       </div>

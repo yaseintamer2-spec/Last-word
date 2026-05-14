@@ -42,11 +42,11 @@ export const RANKS = [
   { name: "Platinum III",min: 900,   color: "text-cyan-600",    icon: "/ranks/platinum_3.png", aura: "rgba(8,145,178,0.4)" },
   { name: "Platinum II", min: 1000,  color: "text-cyan-500",    icon: "/ranks/platinum_2.png", aura: "rgba(6,182,212,0.5)" },
   { name: "Platinum I",  min: 1100,  color: "text-cyan-400",    icon: "/ranks/platinum_1.png", aura: "rgba(34,211,238,0.6)" },
-  { name: "Emerald II",  min: 1200,  color: "text-emerald-500", icon: "/ranks/emerald_2.png", aura: "rgba(16,185,129,0.5)" },
-  { name: "Emerald I",   min: 1300,  color: "text-emerald-400", icon: "/ranks/emerald_1.png", aura: "rgba(52,211,153,0.7)" },
-  { name: "Diamond III", min: 1400,  color: "text-violet-600",  icon: "/ranks/diamond_3.png", aura: "rgba(124,58,237,0.5)" },
-  { name: "Diamond II",  min: 1500,  color: "text-violet-500",  icon: "/ranks/diamond_2.png", aura: "rgba(139,92,246,0.6)" },
-  { name: "Diamond I",   min: 1600,  color: "text-violet-400",  icon: "/ranks/diamond_1.png", aura: "rgba(167,139,250,0.8)" },
+  { name: "Diamond III", min: 1200,  color: "text-violet-600",  icon: "/ranks/diamond_3.png", aura: "rgba(124,58,237,0.5)" },
+  { name: "Diamond II",  min: 1300,  color: "text-violet-500",  icon: "/ranks/diamond_2.png", aura: "rgba(139,92,246,0.6)" },
+  { name: "Diamond I",   min: 1400,  color: "text-violet-400",  icon: "/ranks/diamond_1.png", aura: "rgba(167,139,250,0.8)" },
+  { name: "Emerald II",  min: 1500,  color: "text-emerald-500", icon: "/ranks/emerald_2.png", aura: "rgba(16,185,129,0.5)" },
+  { name: "Emerald I",   min: 1600,  color: "text-emerald-400", icon: "/ranks/emerald_1.png", aura: "rgba(52,211,153,0.7)" },
   { name: "Nightmare",   min: 1700,  color: "text-red-500",     icon: "/ranks/nightmare.png", aura: "rgba(239,68,68,0.9)" },
 ];
 

@@ -31,17 +31,17 @@ const Vibrate = {
 // ── Word pool ─────────────────────────────────────────────────────────────────
 type WordEntry = { word: string; hint: string };
 
-const HARD_WORDS: WordEntry[] = [
-  { word: "ABANDON",  hint: "Leave behind" },
-  { word: "ANCIENT",  hint: "From long ago" },
-  { word: "ANXIETY",  hint: "Feeling worried" },
-  { word: "ARSENAL",  hint: "Weapons collection" },
-  { word: "BALLOON",  hint: "Floats in air" },
-  { word: "BENEATH",  hint: "Under below" },
-  { word: "BLIZZARD", hint: "Snowstorm" },
-  { word: "CAPTAIN",  hint: "Ship leader" },
-  { word: "CHAMPION", hint: "Winner" },
-  { word: "CIRCUIT",  hint: "Complete path" },
+const EASY_WORDS: WordEntry[] = [
+  { word: "EAGLE",  hint: "Hunts from above" },
+  { word: "TIGER",  hint: "Orange stripes" },
+  { word: "JAPAN",  hint: "Rising sun flag" },
+  { word: "PIZZA",  hint: "Sliced in triangles" },
+  { word: "RIVER",  hint: "Always moving forward" },
+  { word: "PIANO",  hint: "88 keys" },
+  { word: "CLOUD",  hint: "Floats overhead" },
+  { word: "STORM",  hint: "Thunder follows lightning" },
+  { word: "GRAPE",  hint: "Grows in clusters" },
+  { word: "SHARK",  hint: "Never stops swimming" },
 ];
 
 const SLANG_WORDS: WordEntry[] = [
@@ -91,10 +91,6 @@ const TIER_BG: Record<Tier, string> = {
   INSANE: "bg-red-500/10 border-red-500/30",
 };
 
-function getPraise(ratio: number): string {
-  return "NICE!";
-}
-
 function calcPoints(revealed: number, wordLen: number, mult: number): number {
   const ratio = revealed / wordLen;
   const bonus  = Math.pow(1 - ratio, 2);
@@ -105,12 +101,10 @@ function getTier(round: number) {
   return TIERS.find((t) => round >= t.rounds[0] && round <= t.rounds[1]) ?? TIERS[3];
 }
 
-function pickWord(pool: string, isDaily: boolean = false): WordEntry {
+function pickWord(pool: string): WordEntry {
   const words = POOL[pool] || EASY_WORDS;
   return words[Math.floor(Math.random() * words.length)];
 }
-
-
 
 // ── Match Over Screen ─────────────────────────────────────────────────────────
 function MatchOverScreen({
@@ -168,19 +162,13 @@ function MatchOverScreen({
                 <h3 className={`text-2xl font-black uppercase tracking-tighter ${newRank.color}`}>{newRank.name}</h3>
                 <p className="text-sm font-mono text-white/40 mt-1">{newRP} TOTAL RP</p>
              </div>
-             <div className="w-full space-y-3 z-10 pt-4">
-                <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">Tier Progress</span>
-                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: "spring" }} className="text-xs font-mono font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">+{myRPChange} RP</motion.span>
+             <div className="w-full space-y-2 z-10 pt-2">
+                <div className="flex justify-between items-end px-1">
+                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Progress</span>
+                    <span className="text-xs font-mono font-bold text-violet-400">+{myRPChange} RP</span>
                 </div>
-                <div className="w-full space-y-2">
-                    <div className="w-full h-6 bg-black/60 rounded-full border-2 border-white/10 overflow-hidden p-1 relative shadow-inner">
-                        <motion.div initial={{ width: `${(oldRP % 100)}%` }} animate={{ width: `${progressPercent}%` }} transition={{ duration: 1.8, ease: "circOut", delay: 0.6 }} className="h-full bg-gradient-to-r from-violet-600 via-violet-400 to-cyan-400 rounded-full shadow-lg" style={{ boxShadow: "0 0 20px rgba(167,139,250,0.8), inset 0 1px 0 rgba(255,255,255,0.2)" }} />
-                    </div>
-                    <div className="flex justify-between text-[9px] font-mono text-white/40 px-1">
-                        <span>{oldRP % 100}/100</span>
-                        <span>{Math.floor(newRP / 100)} Tiers</span>
-                    </div>
+                <div className="w-full h-4 bg-black/40 rounded-full border border-white/5 overflow-hidden p-0.5">
+                    <motion.div initial={{ width: `${(oldRP % 100)}%` }} animate={{ width: `${progressPercent}%` }} transition={{ duration: 1.5, ease: "circOut", delay: 0.5 }} className="h-full bg-gradient-to-r from-violet-700 to-violet-400 rounded-full" />
                 </div>
              </div>
           </div>
@@ -204,13 +192,8 @@ function MatchOverScreen({
 export default function Game() {
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const params = new URLSearchParams(search);
-  const isMultiplayer = params.get("mode") === "multiplayer";
-  const matchId       = params.get("matchId") ?? "";
-  const hasRemoteMatch = isMultiplayer && Boolean(matchId);
-  const matchType = params.get("type") ?? "1v1";
-  const roundLimit = Number(params.get("rounds") ?? "5");
-  const localRanked = isMultiplayer && !hasRemoteMatch;
+  const isMultiplayer = search.includes("mode=multiplayer");
+  const matchId       = new URLSearchParams(search).get("matchId") ?? "";
   const isDaily = search.includes("mode=daily");
   const { user, scores, setScores } = useGameData();
 
@@ -221,7 +204,7 @@ export default function Game() {
   const [lives, setLives]         = useState(3);
   const [canRevive, setCanRevive] = useState(true);
 
-  type MpPlayer = { user_id: string; username: string; score: number; slot: number; isYou: boolean; isEliminated: boolean; pfp?: string };
+  type MpPlayer = { user_id: string; username: string; score: number; slot: number; isYou: boolean; isEliminated: boolean; badge: string };
   const [mpPlayers, setMpPlayers]   = useState<MpPlayer[]>([]);
   const [activeSlot, setActiveSlot] = useState(0);
   const [turnPhase, setTurnPhase]   = useState<"focus" | "playing" | "result">("playing");
@@ -238,10 +221,9 @@ export default function Game() {
   const [guess, setGuess]         = useState("");
   const inputRef                  = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback]   = useState<{ kind: "correct" | "wrong" | "slow"; points?: number; praise?: string } | null>(null);
-  const savedGameOverRef          = useRef(false);
 
   useEffect(() => {
-    if (!hasRemoteMatch || !user) return;
+    if (!isMultiplayer || !matchId || !user) return;
     supabase.from('match_players').select('*').eq('match_id', matchId).order('slot').then(({ data }) => {
         if (data) setMpPlayers(data.map(p => ({ ...p, isYou: p.user_id === user.id, isEliminated: false })));
     });
@@ -260,7 +242,7 @@ export default function Game() {
       }).subscribe();
     channelRef.current = channel;
     return () => { channel.unsubscribe(); };
-  }, [hasRemoteMatch, matchId, user, mpPlayers]);
+  }, [isMultiplayer, matchId, user, mpPlayers]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tierRef = useRef(getTier(1));
@@ -271,34 +253,13 @@ export default function Game() {
   const beginRound = useCallback((r: number) => {
     const tier = getTier(r);
     tierRef.current = tier;
-    if (!hasRemoteMatch) setEntry(pickWord(tier.pool, isDaily));
+    if (!isMultiplayer) setEntry(pickWord(tier.pool));
     setRevealed(0); setGuess(""); setFeedback(null); setCountdown(3); setGameState("COUNTDOWN");
-  }, [isDaily, hasRemoteMatch]);
-
-  useEffect(() => {
-    if (localRanked || !user) return;
-    setMpPlayers([
-      { user_id: user.id, username: user.username, score: 0, slot: 0, isYou: true, isEliminated: false, pfp: user.pfp },
-    ]);
-    setActiveSlot(0);
-    setTurnPhase("playing");
-    setMpRound(1);
-  }, [localRanked, user?.id, user?.username, user?.pfp]);
+  }, [isMultiplayer]);
 
   const nextRound = useCallback(async () => {
     if (isDaily && round >= 1) { setGameState("GAME_OVER"); return; }
-    if (localRanked) {
-      if (round >= roundLimit) {
-        setGameState("MATCH_OVER");
-        return;
-      }
-      const next = round + 1;
-      setRound(next);
-      setMpRound(next);
-      beginRound(next);
-      return;
-    }
-    if (hasRemoteMatch) {
+    if (isMultiplayer && matchId) {
       const survivors = mpPlayers.filter(p => !p.isEliminated);
       if (survivors.length <= 1) { setGameState("MATCH_OVER"); return; }
       const currentIndex = survivors.findIndex(p => p.slot === activeSlot);
@@ -312,20 +273,12 @@ export default function Game() {
     } else {
       setRound((r) => { const nr = r + 1; beginRound(nr); return nr; });
     }
-  }, [isDaily, round, roundLimit, beginRound, localRanked, hasRemoteMatch, matchId, mpPlayers, activeSlot]);
+  }, [isDaily, round, beginRound, isMultiplayer, matchId, mpPlayers, activeSlot]);
 
   const handleLifeLoss = useCallback(async (kind: "wrong" | "slow") => {
     Vibrate.error(); setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
     if (kind === "wrong") { setFeedback({ kind: "wrong" }); setGameState("FEEDBACK"); }
-    if (localRanked) {
-      setMpPlayers(prev => prev.map((p) => {
-        if (p.isYou) return { ...p, score: scoreRef.current, isEliminated: true };
-        return p;
-      }));
-      setTimeout(() => setGameState("MATCH_OVER"), 1400);
-      return;
-    }
-    if (hasRemoteMatch) {
+    if (isMultiplayer && matchId) {
       await supabase.from('match_players').update({ is_eliminated: true }).eq('user_id', user?.id).eq('match_id', matchId);
       const survivors = mpPlayers.filter(p => !p.isEliminated && p.user_id !== user?.id);
       if (survivors.length === 0) setGameState("MATCH_OVER"); else nextRound();
@@ -333,7 +286,7 @@ export default function Game() {
     }
     const newLives = lives - 1; setLives(newLives);
     setTimeout(() => { if (newLives <= 0) { if (canRevive) setGameState("AD_REVIVE"); else setGameState("GAME_OVER"); } else { nextRound(); } }, 1400);
-  }, [lives, canRevive, nextRound, localRanked, hasRemoteMatch, matchId, user, mpPlayers, round]);
+  }, [lives, canRevive, nextRound, isMultiplayer, matchId, user, mpPlayers]);
 
   useEffect(() => {
     if (gameState !== "COUNTDOWN" || paused) return;
@@ -368,23 +321,15 @@ export default function Game() {
           Vibrate.success();
           let pts = calcPoints(revealed, entry.word.length, tierRef.current.mult);
 
-          // Coins per round logic: 10 coins base + 5 for combustion
           const earnedCoins = 10 + (isFire ? 5 : 0);
-
           if (combustion > 0) pts *= 2;
-          setFeedback({ kind: "correct", points: pts, praise: isFire ? "COMBUSTION!" : "GOOD!" });
-          setScore((s) => {
-            const nextScore = s + pts;
-            scoreRef.current = nextScore;
-            setMpPlayers(prev => prev.map((p) => p.isYou ? { ...p, score: nextScore } : p));
-            return nextScore;
-          });
 
-          // Award coins instantly per round
+          setFeedback({ kind: "correct", points: pts, praise: isFire ? "COMBUSTION!" : "GOOD!" });
+          setScore((s) => { scoreRef.current = s + pts; return s + pts; });
           setScores(prev => ({ ...prev, coins: prev.coins + earnedCoins }));
 
           if (isFire) setCombustion(prev => prev + 1); else setCombustion(0);
-          if (hasRemoteMatch) supabase.from('match_players').update({ score: scoreRef.current }).eq('user_id', user?.id).eq('match_id', matchId).then();
+          if (isMultiplayer && matchId) supabase.from('match_players').update({ score: scoreRef.current }).eq('user_id', user?.id).eq('match_id', matchId).then();
           setGameState("FEEDBACK");
           setTimeout(() => nextRound(), 1400);
         }
@@ -393,7 +338,7 @@ export default function Game() {
         setCombustion(0); handleLifeLoss("wrong"); return "";
       }
     });
-  }, [entry.word, revealed, nextRound, handleLifeLoss, hasRemoteMatch, matchId, user, combustion]);
+  }, [entry.word, revealed, nextRound, handleLifeLoss, isMultiplayer, matchId, user, combustion, setScores]);
 
   useEffect(() => {
     if (gameState !== "GUESSING" || paused) return;
@@ -401,64 +346,25 @@ export default function Game() {
     window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
   }, [gameState, paused, handleGuess]);
 
+  const handleShare = async () => {
+    const rank = getRank(scores.rankScore);
+    const text = `I'm ranked ${rank.name} in Last Word! 🔥 Can you beat my level?`;
+    try {
+      await Share.share({ title: 'Last Word Global Rank', text, url: 'https://play.google.com/store/apps/details?id=com.lastword.app', dialogTitle: 'Share with friends' });
+      tryUnlock("shared");
+    } catch (err) { console.warn('Share error:', err); }
+  };
+
   useEffect(() => { beginRound(1); }, [beginRound]);
 
-  useEffect(() => {
-    if (gameState !== "GAME_OVER" || isMultiplayer || savedGameOverRef.current) return;
-    savedGameOverRef.current = true;
-    const coinsEarned = Math.floor(score / 100);
-    setScores(prev => {
-      const newGamesPlayed = prev.gamesPlayed + 1;
-      const placementGames = (prev.placementGamesPlayed ?? 0) + 1;
-      let newRP = prev.rankScore;
-      
-      // Placement match logic: first 3 games initialize rank
-      if (placementGames <= 3 && !prev.placementComplete) {
-        if (placementGames === 3) {
-          // After 3 games, calculate initial rank based on average performance
-          const avgScore = (prev.totalPoints + score) / 3;
-          if (avgScore > 10000) newRP = 600; // Gold III
-          else if (avgScore > 5000) newRP = 300; // Silver III
-          else newRP = 0; // Bronze III
-          return {
-            ...prev,
-            highScore: Math.max(prev.highScore, score),
-            totalPoints: prev.totalPoints + score,
-            gamesPlayed: newGamesPlayed,
-            roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
-            coins: prev.coins + coinsEarned,
-            rankScore: newRP,
-            placementGamesPlayed: placementGames,
-            placementComplete: true,
-          };
-        }
-      }
-      return {
-        ...prev,
-        highScore: Math.max(prev.highScore, score),
-        totalPoints: prev.totalPoints + score,
-        gamesPlayed: newGamesPlayed,
-        roundRecord: Math.max(prev.roundRecord, Math.max(0, round - 1)),
-        coins: prev.coins + coinsEarned,
-        placementGamesPlayed: placementGames,
-      };
-    });
-    tryUnlock("first_blood");
-    if (score >= 5000) tryUnlock("score_5k");
-    if (score >= 20000) tryUnlock("score_20k");
-  }, [gameState, isMultiplayer, score, round, setScores]);
-
   const restartGame = () => {
-    savedGameOverRef.current = false;
-    scoreRef.current = 0;
-    setScore(0); setLives(3); setCanRevive(true); setRound(1); setCombustion(0);
-    if (!localRanked && !hasRemoteMatch) setMpPlayers([]);
-    setActiveSlot(0); setTurnPhase("playing"); setMpRound(1);
+    setScore(0); setLives(3); setCanRevive(true); setRound(1);
+    setMpPlayers([]); setActiveSlot(0); setTurnPhase("playing");
     beginRound(1);
   };
 
-  const activePlayer = mpPlayers.find(p => p.slot === activeSlot) || mpPlayers[0];
-  const isMyTurn      = activePlayer?.isYou ?? true;
+  const activePlayer = mpPlayers.find(p => p.slot === activeSlot);
+  const isMyTurn      = activePlayer?.isYou;
 
   return (
     <Layout>
@@ -474,35 +380,32 @@ export default function Game() {
           </div>
           <div className="text-right flex flex-col items-end gap-0.5">
              <div className="text-xs text-muted-foreground font-mono">Round {isMultiplayer ? mpRound : round}</div>
-             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_BG[getTier(isMultiplayer ? mpRound : round).tier]} ${TIER_COLORS[getTier(isMultiplayer ? mpRound : round).tier]}`}>{getTier(isMultiplayer ? mpRound : round).tier}</div>
+             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_BG[getTier(round).tier]} ${TIER_COLORS[getTier(round).tier]}`}>{getTier(round).tier}</div>
           </div>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-8 relative">
           {isMultiplayer && (turnPhase === "focus" || !isMyTurn) && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl">
-              <div className="w-24 h-24 rounded-3xl border-2 border-cyan-400/50 bg-cyan-400/10 flex items-center justify-center overflow-hidden shadow-2xl">
-                {activePlayer?.pfp ? <img src={activePlayer.pfp} className="w-full h-full object-cover" /> : <span className="text-4xl font-black text-cyan-400">{(activePlayer?.username?.[0] ?? "?").toUpperCase()}</span>}
+              <div className="w-24 h-24 rounded-full border-2 border-cyan-400/50 bg-black/40 flex flex-col items-center justify-center overflow-hidden shadow-2xl relative">
+                <div className="absolute inset-0 bg-cyan-400/5 blur-xl" />
+                <span className="text-[10px] font-black font-mono text-white/30 tracking-tighter relative z-10">{(activePlayer?.badge ?? "Guest").toUpperCase()}</span>
+                <div className="w-6 h-0.5 bg-cyan-400/20 rounded-full relative z-10 mt-1" />
               </div>
-              <div className="text-center mt-4">
+              <div className="text-center mt-6">
                 <p className="text-sm font-mono text-cyan-400/60 uppercase tracking-widest">{isMyTurn ? "Your Turn" : "Opponent Turn"}</p>
-                <h2 className="text-3xl font-black text-white">{activePlayer?.username}</h2>
+                <h2 className="text-4xl font-black text-white tracking-tight uppercase" style={{ fontFamily: "Orbitron, sans-serif" }}>{activePlayer?.username}</h2>
               </div>
-
               {mpPlayers.find(p => p.isYou)?.isEliminated && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8 flex flex-col items-center gap-3">
                     <p className="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">You are spectating</p>
-                    <Button onClick={() => setLocation("/")} variant="outline" className="border-white/10 text-white/50 hover:text-white rounded-xl h-10 px-6">
-                        Exit to Home
-                    </Button>
+                    <Button onClick={() => setLocation("/")} variant="outline" className="border-white/10 text-white/50 rounded-xl h-10 px-6">Exit to Home</Button>
                 </motion.div>
               )}
             </motion.div>
           )}
 
           {gameState === "MATCH_OVER" && <MatchOverScreen playerScore={score} mpPlayers={mpPlayers} onHome={() => setLocation("/")} />}
-          {gameState === "AD_REVIVE" && <AdReviveModal onDecline={() => setGameState("GAME_OVER")} onRevive={() => { setCanRevive(false); setLives(1); nextRound(); }} />}
-          {gameState === "INTERSTITIAL" && <InterstitialAd onDone={() => nextRound()} />}
 
           <AnimatePresence mode="wait">
             {gameState === "COUNTDOWN" && <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 1.5, opacity: 0 }} className="text-9xl font-black">{countdown > 0 ? countdown : "GO!"}</motion.div>}
@@ -535,17 +438,11 @@ export default function Game() {
                 <h2 className="text-5xl font-black text-red-400">MATCH ENDED</h2>
                 <div className="flex flex-col gap-3 w-full">
                    <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Rank Reached</div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Rank</div>
                       <div className={`text-2xl font-black ${getRank(scores.rankScore).color}`}>{getRank(scores.rankScore).name}</div>
                    </div>
-                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Match Score</div>
-                      <div className="text-xl font-bold font-mono">{score.toLocaleString()}</div>
-                   </div>
                 </div>
-                <Button onClick={handleShare} className="w-full h-14 bg-emerald-500 text-black font-black text-lg rounded-2xl shadow-lg">
-                  <Share2 className="mr-2" /> SHARE RANK
-                </Button>
+                <Button onClick={handleShare} className="w-full h-14 bg-emerald-500 text-black font-black text-lg rounded-2xl shadow-lg">SHARE RANK</Button>
                 <Button onClick={restartGame} className="w-full h-12 bg-cyan-400 text-black font-bold rounded-xl">PLAY AGAIN</Button>
                 <Button variant="outline" onClick={() => setLocation("/")} className="w-full h-10 border-white/10 text-white/40">HOME</Button>
               </motion.div>
