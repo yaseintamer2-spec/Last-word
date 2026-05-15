@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Last Word</string>
-    <string name="title_activity_main">Last Word</string>
+    <string name="app_name">Last Letter</string>
+    <string name="title_activity_main">Last Letter</string>
     <string name="package_name">com.lastword.app</string>
     <string name="custom_url_scheme">com.lastword.app</string>
 </resources>
