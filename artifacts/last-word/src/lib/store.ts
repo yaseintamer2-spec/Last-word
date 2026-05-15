@@ -168,14 +168,27 @@ export function useGameData() {
 
   const setUser = useCallback(async (newUser: User | null) => {
     if (newUser) {
+      const username = newUser.username.trim().substring(0, 15);
+
+      // Check uniqueness locally/server-side
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', username)
+        .neq('id', newUser.id)
+        .maybeSingle();
+
+      if (existing) throw new Error("USERNAME_TAKEN");
+
       // Profile Picture Default Silhouette
       if (!newUser.pfp) newUser.pfp = "https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg";
 
       const { data, error } = await supabase.from('profiles').upsert({
-        id: newUser.id, username: newUser.username, badge: newUser.badge, pfp: newUser.pfp, updated_at: new Date().toISOString()
+        id: newUser.id, username, badge: newUser.badge, pfp: newUser.pfp, updated_at: new Date().toISOString()
       }).select('display_id, rank_score, coins, badge, gifts_claimed, last_gift_date, owned_pfps').single();
 
       if (data && !error) {
+        newUser.username = data.username;
         newUser.display_id = data.display_id;
         newUser.badge = data.badge || "Guest";
         // Sync cloud stats back to local

@@ -743,7 +743,7 @@ export default function Home() {
                 </div>
 
                 <div className="pt-2">
-                  <p className="text-[9px] font-mono text-center text-white/10 uppercase tracking-[0.3em]">Last Word · v1.2</p>
+                  <p className="text-[9px] font-mono text-center text-white/10 uppercase tracking-[0.3em]">Last Letter · v1.5</p>
                 </div>
               </div>
             </motion.div>
