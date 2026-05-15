@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.lastword.app',
-  appName: 'Last Word',
+  appName: 'Last Letter',
   webDir: 'artifacts/last-word/dist',
   backgroundColor: '#03050e',
 

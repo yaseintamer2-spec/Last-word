@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const LAST_LETTERS = ["L", "A", "S", "T"];
-const WORD_LETTERS = ["W", "O", "R", "D"];
+const WORD_LETTERS = ["L", "E", "T", "T", "E", "R"];
 
 export function LoadingScreen({ onDone }: { onDone: () => void }) {
   const [showWord, setShowWord]       = useState(false);
@@ -22,8 +22,17 @@ export function LoadingScreen({ onDone }: { onDone: () => void }) {
     const t5 = setTimeout(() => { setShowRipple1(false); setShowRipple2(false); }, 950);
     const t6 = setTimeout(() => setShowTagline(true),  720);
     const t7 = setTimeout(() => { setExiting(true); setTimeout(onDone, 300); }, 1800);
-    return () => [t1, t2, t3, t4, t5, t6, t7].forEach(clearTimeout);
-  }, [onDone]);
+
+    // SAFETY FALLBACK: Force close if stuck
+    const safety = setTimeout(() => {
+        if (!exiting) {
+            setExiting(true);
+            onDone();
+        }
+    }, 5000);
+
+    return () => [t1, t2, t3, t4, t5, t6, t7, safety].forEach(clearTimeout);
+  }, [onDone, exiting]);
 
   // Progress fills in 1.6s
   useEffect(() => {

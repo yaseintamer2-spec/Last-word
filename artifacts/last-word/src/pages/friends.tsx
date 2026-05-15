@@ -5,6 +5,7 @@ import { useGameData } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/layout";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { SFX } from "@/lib/sounds";
 import { Vibrate } from "@/lib/haptics";
@@ -38,11 +39,11 @@ export default function Friends() {
     setFeedback({ text: "", type: "" });
 
     try {
-      // Find user strictly by numeric display ID
+      // Find user strictly by unique username
       const { data: targetUser, error: findErr } = await supabase
         .from('profiles')
         .select('id, username')
-        .eq('display_id', parseInt(trimmed))
+        .eq('username', trimmed)
         .single();
 
       if (findErr || !targetUser) {
@@ -146,13 +147,15 @@ export default function Friends() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             className="mb-5 rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 bg-white/5 border-white/10 shadow-xl">
             <div>
-              <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest mb-1">Your ID to share</p>
-              <p className="font-mono font-bold text-cyan-400 text-sm tracking-wider">{myId}</p>
+              <p className="text-[10px] text-muted-foreground font-sans uppercase tracking-widest mb-1">Your username to share</p>
+              <p className="font-bold text-cyan-400 text-sm tracking-wider">{user.username}</p>
             </div>
-            <button onClick={handleCopyId}
-              className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border transition-all"
-              style={{ background: copied ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.05)", borderColor: copied ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.1)" }}>
-              {copied ? <CheckCheck className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4 text-muted-foreground" />}
+            <button onClick={() => {
+                navigator.clipboard.writeText(user.username);
+                toast.success("Username copied!");
+            }}
+              className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border transition-all bg-white/5 border-white/10">
+              <Copy className="h-4 w-4 text-muted-foreground" />
             </button>
           </motion.div>
         )}
@@ -162,8 +165,8 @@ export default function Friends() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Paste Friend ID (e.g. #7A2B)..."
-              className="h-11 bg-white/5 border-white/10 font-mono text-sm"
+              placeholder="Friend's Username (e.g. Yasein)..."
+              className="h-11 bg-white/5 border-white/10 font-sans text-sm"
             />
             <AnimatePresence>
               {feedback.text && (
@@ -255,17 +258,15 @@ function Section({ label, accent = "#fff", children }: { label: string; accent?:
 }
 
 function FriendRow({ friend, online, children }: { friend: any; online?: boolean; children?: React.ReactNode }) {
-  const badge = friend.badge || "Guest";
-  const isGuest = badge === "Guest";
+  const pfp = friend.pfp || "https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg";
 
   return (
     <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       className="flex items-center justify-between px-3 py-3 rounded-2xl bg-white/5 border border-white/10">
       <div className="flex items-center gap-3">
         <div className="relative">
-          <div className={`w-10 h-10 rounded-full border-2 border-white/10 flex flex-col items-center justify-center overflow-hidden shadow-inner bg-gradient-to-br ${isGuest ? 'from-slate-400/10 to-slate-600/10' : 'from-cyan-400/10 to-violet-500/10'}`}>
-             <span className="text-[7px] font-black font-mono text-white/30 tracking-tighter leading-none mb-0.5">{badge.toUpperCase()}</span>
-             <div className="w-3 h-0.5 bg-white/10 rounded-full" />
+          <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden bg-black/40">
+             <img src={pfp} className="w-full h-full object-cover" />
           </div>
           {online !== undefined && (
             <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background ${online ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/10"}`} />
@@ -274,7 +275,6 @@ function FriendRow({ friend, online, children }: { friend: any; online?: boolean
         <div className="flex flex-col">
           <span className="font-bold text-sm leading-none flex items-center gap-2">
             {friend.username}
-            <span className="text-[9px] font-mono text-white/20">#{friend.display_id}</span>
           </span>
           <span className="text-[9px] font-mono text-white/20 mt-1 uppercase">{online ? "Active Now" : "Offline"}</span>
         </div>

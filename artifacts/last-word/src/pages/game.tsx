@@ -31,6 +31,8 @@ const Vibrate = {
 // ── Word pool ─────────────────────────────────────────────────────────────────
 type WordEntry = { word: string; hint: string };
 
+const USED_WORDS = new Set<string>();
+
 const EASY_WORDS: WordEntry[] = [
   { word: "EAGLE",  hint: "Hunts from above" },
   { word: "TIGER",  hint: "Orange stripes" },
@@ -103,7 +105,16 @@ function getTier(round: number) {
 
 function pickWord(pool: string): WordEntry {
   const words = POOL[pool] || EASY_WORDS;
-  return words[Math.floor(Math.random() * words.length)];
+  const available = words.filter(w => !USED_WORDS.has(w.word));
+
+  if (available.length === 0) {
+      USED_WORDS.clear(); // Reset if all words used
+      return words[Math.floor(Math.random() * words.length)];
+  }
+
+  const selected = available[Math.floor(Math.random() * available.length)];
+  USED_WORDS.add(selected.word);
+  return selected;
 }
 
 // ── Match Over Screen ─────────────────────────────────────────────────────────
@@ -154,8 +165,8 @@ function MatchOverScreen({
           <h2 className="text-4xl font-black text-white/40 tracking-tighter uppercase mb-2">Match Results</h2>
           <div className="flex flex-col items-center gap-4 bg-white/5 border border-white/10 rounded-[2.5rem] p-8 w-full shadow-2xl relative overflow-hidden">
              <div className="absolute inset-0 bg-gradient-to-b from-violet-600/10 to-transparent" />
-             <motion.div animate={isRankUp ? { scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] } : {}} className="w-24 h-24 rounded-3xl bg-black/60 flex items-center justify-center border-2 border-white/10 z-10 p-4 relative" style={{ boxShadow: `0 0 40px ${newRank.aura || 'rgba(255,255,255,0.1)'}` }}>
-                <div className="absolute inset-0 rounded-3xl blur-xl opacity-30 animate-pulse" style={{ backgroundColor: newRank.aura }} />
+             <motion.div animate={isRankUp ? { scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] } : {}} className="w-28 h-28 rounded-full flex items-center justify-center z-10 p-2 relative" style={{ boxShadow: `0 0 40px ${newRank.aura || 'rgba(255,255,255,0.1)'}` }}>
+                <div className="absolute inset-0 rounded-full blur-xl opacity-20 animate-pulse" style={{ backgroundColor: newRank.aura }} />
                 <img src={newRank.icon} alt="" className="w-full h-full object-contain relative z-10" />
              </motion.div>
              <div className="z-10 text-center">
@@ -203,8 +214,9 @@ export default function Game() {
   const [score, setScore]         = useState(0);
   const [lives, setLives]         = useState(3);
   const [canRevive, setCanRevive] = useState(true);
+  const [extraTime, setExtraTime] = useState(5); // 5 seconds available per match
 
-  type MpPlayer = { user_id: string; username: string; score: number; slot: number; isYou: boolean; isEliminated: boolean; badge: string };
+  type MpPlayer = { user_id: string; username: string; score: number; slot: number; isYou: boolean; isEliminated: boolean; badge: string; pfp?: string };
   const [mpPlayers, setMpPlayers]   = useState<MpPlayer[]>([]);
   const [activeSlot, setActiveSlot] = useState(0);
   const [turnPhase, setTurnPhase]   = useState<"focus" | "playing" | "result">("playing");
@@ -230,6 +242,10 @@ export default function Game() {
     const channel = supabase.channel(`match:${matchId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'match_state', filter: `match_id=eq.${matchId}` }, (payload) => {
         const s = payload.new;
+        if (s.status === "finished") {
+            setGameState("MATCH_OVER");
+            return;
+        }
         setActiveSlot(s.active_slot);
         setMpRound(s.current_round);
         setEntry({ word: s.word, hint: s.hint });
@@ -260,33 +276,56 @@ export default function Game() {
   const nextRound = useCallback(async () => {
     if (isDaily && round >= 1) { setGameState("GAME_OVER"); return; }
     if (isMultiplayer && matchId) {
-      const survivors = mpPlayers.filter(p => !p.isEliminated);
-      if (survivors.length <= 1) { setGameState("MATCH_OVER"); return; }
+      // Fetch fresh survivor list to avoid stale state
+      const { data: players } = await supabase.from('match_players').select('*').eq('match_id', matchId);
+      if (!players) return;
+
+      const survivors = players.filter(p => !p.is_eliminated).sort((a, b) => a.slot - b.slot);
+
+      if (survivors.length <= 1) {
+        await supabase.from('match_state').update({ status: "finished" }).eq('match_id', matchId);
+        return;
+      }
+
       const currentIndex = survivors.findIndex(p => p.slot === activeSlot);
       const nextPlayer   = survivors[(currentIndex + 1) % survivors.length];
       const isNewRound   = nextPlayer.slot === survivors[0].slot;
-      const nextRoundN   = isNewRound ? round + 1 : round;
+      const nextRoundN   = isNewRound ? mpRound + 1 : mpRound;
+
       const tier = getTier(nextRoundN);
       const newEntry = pickWord(tier.pool);
-      await supabase.from('match_state').update({ active_slot: nextPlayer.slot, current_round: nextRoundN, word: newEntry.word, hint: newEntry.hint, phase: "focus", updated_at: new Date().toISOString() }).eq('match_id', matchId);
-      setTimeout(async () => { await supabase.from('match_state').update({ phase: "playing" }).eq('match_id', matchId); }, 2000);
+
+      await supabase.from('match_state').update({
+        active_slot: nextPlayer.slot,
+        current_round: nextRoundN,
+        word: newEntry.word,
+        hint: newEntry.hint,
+        phase: "focus",
+        updated_at: new Date().toISOString()
+      }).eq('match_id', matchId);
+
+      setTimeout(async () => {
+        await supabase.from('match_state').update({ phase: "playing" }).eq('match_id', matchId);
+      }, 2000);
     } else {
       setRound((r) => { const nr = r + 1; beginRound(nr); return nr; });
     }
-  }, [isDaily, round, beginRound, isMultiplayer, matchId, mpPlayers, activeSlot]);
+  }, [isDaily, round, beginRound, isMultiplayer, matchId, activeSlot]);
 
   const handleLifeLoss = useCallback(async (kind: "wrong" | "slow") => {
     Vibrate.error(); setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
     if (kind === "wrong") { setFeedback({ kind: "wrong" }); setGameState("FEEDBACK"); }
+
     if (isMultiplayer && matchId) {
       await supabase.from('match_players').update({ is_eliminated: true }).eq('user_id', user?.id).eq('match_id', matchId);
-      const survivors = mpPlayers.filter(p => !p.isEliminated && p.user_id !== user?.id);
-      if (survivors.length === 0) setGameState("MATCH_OVER"); else nextRound();
+
+      // Short delay to allow DB update to propagate slightly if needed, but nextRound now fetches fresh
+      setTimeout(() => nextRound(), 1000);
       return;
     }
     const newLives = lives - 1; setLives(newLives);
     setTimeout(() => { if (newLives <= 0) { if (canRevive) setGameState("AD_REVIVE"); else setGameState("GAME_OVER"); } else { nextRound(); } }, 1400);
-  }, [lives, canRevive, nextRound, isMultiplayer, matchId, user, mpPlayers]);
+  }, [lives, canRevive, nextRound, isMultiplayer, matchId, user]);
 
   useEffect(() => {
     if (gameState !== "COUNTDOWN" || paused) return;
@@ -302,6 +341,15 @@ export default function Game() {
     typingTimer.current = setTimeout(() => setRevealed((r) => r + 1), tierRef.current.speed);
     return clearTyping;
   }, [gameState, revealed, entry.word, paused, handleLifeLoss]);
+
+  const handleUseTime = () => {
+    if (gameState !== "TYPING" || extraTime <= 0) return;
+    Vibrate.medium();
+    setExtraTime(prev => prev - 1);
+    // Add 1 second to typing phase by delaying the reveal interval
+    clearTyping();
+    typingTimer.current = setTimeout(() => setRevealed((r) => r + 1), tierRef.current.speed + 1000);
+  };
 
   const handleStop = useCallback(() => {
     if (gameState !== "TYPING" || revealed >= entry.word.length) return;
@@ -348,19 +396,38 @@ export default function Game() {
 
   const handleShare = async () => {
     const rank = getRank(scores.rankScore);
-    const text = `I'm ranked ${rank.name} in Last Word! 🔥 Can you beat my level?`;
+    const text = `I'm ranked ${rank.name} in Last Letter! 🔥 Can you beat my level?`;
     try {
-      await Share.share({ title: 'Last Word Global Rank', text, url: 'https://play.google.com/store/apps/details?id=com.lastword.app', dialogTitle: 'Share with friends' });
+      await Share.share({ title: 'Last Letter Global Rank', text, url: 'https://play.google.com/store/apps/details?id=com.lastword.app', dialogTitle: 'Share with friends' });
       tryUnlock("shared");
     } catch (err) { console.warn('Share error:', err); }
   };
 
   useEffect(() => { beginRound(1); }, [beginRound]);
 
-  const restartGame = () => {
-    setScore(0); setLives(3); setCanRevive(true); setRound(1);
+  const restartGame = async () => {
+    // Show interstitial after match ends
+    try {
+      await AdMob.prepareInterstitial({ adId: INTERSTITIAL_AD_ID, isTesting: false });
+      await AdMob.showInterstitial();
+    } catch (e) {
+      console.warn("Interstitial failed", e);
+    }
+
+    USED_WORDS.clear();
+    setScore(0); setLives(3); setCanRevive(true); setRound(1); setExtraTime(5);
     setMpPlayers([]); setActiveSlot(0); setTurnPhase("playing");
     beginRound(1);
+  };
+
+  const handleBackToHome = async () => {
+    try {
+      await AdMob.prepareInterstitial({ adId: INTERSTITIAL_AD_ID, isTesting: false });
+      await AdMob.showInterstitial();
+    } catch (e) {
+      console.warn("Interstitial failed", e);
+    }
+    setLocation("/");
   };
 
   const activePlayer = mpPlayers.find(p => p.slot === activeSlot);
@@ -375,26 +442,47 @@ export default function Game() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/8 bg-black/30 backdrop-blur-md z-20">
           <div className="flex items-center gap-1.5">{Array.from({ length: 3 }).map((_, i) => (<Heart key={i} className={`h-5 w-5 ${i < lives ? "fill-red-500 text-red-500" : "text-white/10 fill-white/5"}`} />))}</div>
           <div className="flex items-center gap-4">
-            <div className="text-xl font-mono font-bold">{score.toLocaleString()}</div>
+            <div className="text-xl font-mono font-bold text-white">{score.toLocaleString()}</div>
             {combustion > 0 && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex items-center gap-1 text-orange-500"><Zap className="h-4 w-4 fill-current" /><span className="text-sm font-black">x{combustion + 1}</span></motion.div>}
           </div>
           <div className="text-right flex flex-col items-end gap-0.5">
              <div className="text-xs text-muted-foreground font-mono">Round {isMultiplayer ? mpRound : round}</div>
-             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_BG[getTier(round).tier]} ${TIER_COLORS[getTier(round).tier]}`}>{getTier(round).tier}</div>
+             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded-lg border ${TIER_BG[getTier(isMultiplayer ? mpRound : round).tier]} ${TIER_COLORS[getTier(isMultiplayer ? mpRound : round).tier]}`}>{getTier(isMultiplayer ? mpRound : round).tier}</div>
           </div>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-8 relative">
           {isMultiplayer && (turnPhase === "focus" || !isMyTurn) && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl">
-              <div className="w-24 h-24 rounded-full border-2 border-cyan-400/50 bg-black/40 flex flex-col items-center justify-center overflow-hidden shadow-2xl relative">
-                <div className="absolute inset-0 bg-cyan-400/5 blur-xl" />
-                <span className="text-[10px] font-black font-mono text-white/30 tracking-tighter relative z-10">{(activePlayer?.badge ?? "Guest").toUpperCase()}</span>
-                <div className="w-6 h-0.5 bg-cyan-400/20 rounded-full relative z-10 mt-1" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-3xl">
+
+              {/* Profile Focus with Ring */}
+              <div className="relative mb-12">
+                  <motion.div
+                    animate={{ scale: [1, 1.05, 1], rotate: [0, 2, -2, 0] }}
+                    transition={{ repeat: Infinity, duration: 4 }}
+                    className="w-40 h-40 rounded-full border-4 border-cyan-400/50 bg-black/40 flex flex-col items-center justify-center overflow-hidden shadow-[0_0_60px_rgba(34,211,238,0.2)] relative"
+                  >
+                    <img src={activePlayer?.pfp || "https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg"} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                    <span className="absolute bottom-6 text-[11px] font-black text-cyan-400 tracking-[0.2em] uppercase">{(activePlayer?.badge ?? "Guest")}</span>
+                  </motion.div>
+
+                  {/* Rotating Orbit effect around player */}
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                    className="absolute -inset-4 border border-dashed border-white/10 rounded-full"
+                  />
               </div>
-              <div className="text-center mt-6">
-                <p className="text-sm font-mono text-cyan-400/60 uppercase tracking-widest">{isMyTurn ? "Your Turn" : "Opponent Turn"}</p>
-                <h2 className="text-4xl font-black text-white tracking-tight uppercase" style={{ fontFamily: "Orbitron, sans-serif" }}>{activePlayer?.username}</h2>
+
+              {/* Table Visual in the middle */}
+              <div className="w-64 h-3 rounded-full bg-white/5 border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] mb-8 flex items-center justify-center">
+                  <div className="w-32 h-full bg-cyan-400/20 blur-md rounded-full" />
+              </div>
+
+              <div className="text-center">
+                <p className="text-sm font-sans text-cyan-400/60 uppercase tracking-[0.3em] mb-2">{isMyTurn ? "Your Turn" : "Opponent Turn"}</p>
+                <h2 className="text-5xl font-black text-white tracking-tighter uppercase">{activePlayer?.username}</h2>
               </div>
               {mpPlayers.find(p => p.isYou)?.isEliminated && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8 flex flex-col items-center gap-3">
@@ -424,7 +512,23 @@ export default function Game() {
                     return <motion.div key={idx} animate={isGuessed ? { scale: [1, 1.1, 1] } : {}} className={cls}>{isRevealed ? char : (isGuessed ? guess[guessIdx] : "")}</motion.div>;
                   })}
                 </div>
-                {gameState === "TYPING" && <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl shadow-2xl active:scale-90 transition-transform">STOP</Button>}
+                <div className="flex flex-col items-center gap-4">
+                  {gameState === "TYPING" && (
+                    <div className="flex gap-4 items-center">
+                      <Button onClick={handleStop} className="w-32 h-32 rounded-full bg-red-600 text-white font-black text-2xl shadow-2xl active:scale-90 transition-transform">STOP</Button>
+                      {extraTime > 0 && (
+                        <motion.button
+                          initial={{ scale: 0 }} animate={{ scale: 1 }}
+                          onClick={handleUseTime}
+                          className="w-16 h-16 rounded-2xl bg-cyan-500 text-black flex flex-col items-center justify-center shadow-lg active:scale-95"
+                        >
+                          <Zap className="h-6 w-6 fill-current" />
+                          <span className="text-[10px] font-black">{extraTime}s</span>
+                        </motion.button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {gameState === "GUESSING" && (
                   <div className="flex flex-col items-center gap-6 w-full">
                     <input ref={inputRef} type="text" className="absolute opacity-0" onInput={(e) => { const v = e.currentTarget.value; if (v) handleGuess(v[v.length - 1]); e.currentTarget.value = ""; }} />
@@ -444,7 +548,7 @@ export default function Game() {
                 </div>
                 <Button onClick={handleShare} className="w-full h-14 bg-emerald-500 text-black font-black text-lg rounded-2xl shadow-lg">SHARE RANK</Button>
                 <Button onClick={restartGame} className="w-full h-12 bg-cyan-400 text-black font-bold rounded-xl">PLAY AGAIN</Button>
-                <Button variant="outline" onClick={() => setLocation("/")} className="w-full h-10 border-white/10 text-white/40">HOME</Button>
+                <Button variant="outline" onClick={handleBackToHome} className="w-full h-10 border-white/10 text-white/40">HOME</Button>
               </motion.div>
             )}
           </AnimatePresence>

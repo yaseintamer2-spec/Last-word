@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
 
 export type User = {
   id: string;
   display_id?: number;
   username: string;
-  badge: string; // Default: "Guest"
+  badge: string; // "Guest", "Pro", etc.
+  pfp?: string; // Standard silhouette URL or custom
 };
 
 export type Scores = {
@@ -14,6 +15,9 @@ export type Scores = {
   roundRecord: number;
   rankScore: number;
   coins: number;
+  giftsClaimedToday: number;
+  lastGiftDate: string;
+  ownedPfps: string[];
 };
 
 export type Friend = {
@@ -54,7 +58,7 @@ export function getRank(score: number) {
   return [...RANKS].reverse().find(r => score >= r.min) || RANKS[0];
 }
 
-const DEFAULT_SCORES: Scores = { totalPoints: 0, gamesPlayed: 0, roundRecord: 0, rankScore: 0, coins: 0 };
+const DEFAULT_SCORES: Scores = { totalPoints: 0, gamesPlayed: 0, roundRecord: 0, rankScore: 0, coins: 0, giftsClaimedToday: 0, lastGiftDate: "", ownedPfps: ["https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg"] };
 
 export function useStore<T>(key: string, initialValue: T): [T, (val: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
@@ -78,10 +82,10 @@ export function useStore<T>(key: string, initialValue: T): [T, (val: T | ((prev:
 }
 
 export function useGameData() {
-  const [user, setUserState] = useStore<User | null>('lastword_user', null);
-  const [scores, setScores] = useStore<Scores>('lastword_scores', DEFAULT_SCORES);
-  const [friends, setFriends] = useStore<Friend[]>('lastword_friends', []);
-  const [leaderboard, setLeaderboard] = useStore<LeaderboardEntry[]>('lastword_leaderboard', []);
+  const [user, setUserState] = useStore<User | null>('lastletter_user', null);
+  const [scores, setScores] = useStore<Scores>('lastletter_scores', DEFAULT_SCORES);
+  const [friends, setFriends] = useStore<Friend[]>('lastletter_friends', []);
+  const [leaderboard, setLeaderboard] = useStore<LeaderboardEntry[]>('lastletter_leaderboard', []);
 
   // ── Heartbeat: Mark user as online ──────────────────────────────────────────
   useEffect(() => {
@@ -131,36 +135,45 @@ export function useGameData() {
     return () => { channel.unsubscribe(); };
   }, [user]);
 
-  const setScoresWithSync = async (val: Scores | ((prev: Scores) => Scores)) => {
-    const newScores = typeof val === 'function' ? val(scores) : val;
-    setScores(newScores);
-    if (user) {
-      // Sync to Leaderboard
-      await supabase.from('leaderboard').upsert({
-        user_id: user.id, username: user.username, high_score: newScores.rankScore, updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id' });
+  const setScoresWithSync = useCallback((val: Scores | ((prev: Scores) => Scores)) => {
+    setScores(prev => {
+      const newScores = typeof val === 'function' ? val(prev) : val;
 
-      // Sync to Profile (RP and Coins)
-      await supabase.from('profiles').update({
-        rank_score: newScores.rankScore,
-        coins: newScores.coins,
-        updated_at: new Date().toISOString()
-      }).eq('id', user.id);
-    }
-  };
+      if (user) {
+        // Run syncs in background
+        supabase.from('leaderboard').upsert({
+          user_id: user.id, username: user.username, high_score: newScores.rankScore, updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' }).then();
 
-  const fetchLeaderboard = async () => {
+        supabase.from('profiles').update({
+          rank_score: newScores.rankScore,
+          coins: newScores.coins,
+          gifts_claimed: newScores.giftsClaimedToday,
+          last_gift_date: newScores.lastGiftDate,
+          owned_pfps: newScores.ownedPfps,
+          updated_at: new Date().toISOString()
+        }).eq('id', user.id).then();
+      }
+
+      return newScores;
+    });
+  }, [user, setScores]);
+
+  const fetchLeaderboard = useCallback(async () => {
     const { data } = await supabase.from('leaderboard').select('username, high_score').order('high_score', { ascending: false }).limit(50);
     if (data) setLeaderboard(data.map(e => ({ username: e.username, score: e.high_score })));
-  };
+  }, [setLeaderboard]);
 
-  useEffect(() => { fetchLeaderboard(); }, []);
+  useEffect(() => { fetchLeaderboard(); }, [fetchLeaderboard]);
 
-  const setUser = async (newUser: User | null) => {
+  const setUser = useCallback(async (newUser: User | null) => {
     if (newUser) {
+      // Profile Picture Default Silhouette
+      if (!newUser.pfp) newUser.pfp = "https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg";
+
       const { data, error } = await supabase.from('profiles').upsert({
-        id: newUser.id, username: newUser.username, badge: newUser.badge, updated_at: new Date().toISOString()
-      }).select('display_id, rank_score, coins, badge').single();
+        id: newUser.id, username: newUser.username, badge: newUser.badge, pfp: newUser.pfp, updated_at: new Date().toISOString()
+      }).select('display_id, rank_score, coins, badge, gifts_claimed, last_gift_date, owned_pfps').single();
 
       if (data && !error) {
         newUser.display_id = data.display_id;
@@ -169,12 +182,15 @@ export function useGameData() {
         setScores(prev => ({
           ...prev,
           rankScore: Math.max(prev.rankScore, data.rank_score || 0),
-          coins: Math.max(prev.coins, data.coins || 0)
+          coins: Math.max(prev.coins, data.coins || 0),
+          giftsClaimedToday: data.gifts_claimed || 0,
+          lastGiftDate: data.last_gift_date || "",
+          ownedPfps: data.owned_pfps || prev.ownedPfps
         }));
       }
     }
     setUserState(newUser);
-  };
+  }, [setUserState, setScores]);
 
   return { user, setUser, scores, setScores: setScoresWithSync, friends, setFriends, leaderboard, setLeaderboard, fetchLeaderboard };
 }

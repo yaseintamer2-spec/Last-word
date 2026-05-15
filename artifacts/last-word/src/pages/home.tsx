@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Play, X, Check, Camera, Star, Calendar, Award, Flame, Settings } from "lucide-react";
-import { useGameData } from "@/lib/store";
+import { Trophy, Users, Play, X, Check, Camera, Star, Calendar, Award, Flame, Settings, ShoppingCart } from "lucide-react";
+import { useGameData, getRank } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/layout";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { isTodayCompleted, getDailyState } from "@/lib/daily";
 import { getUnlocked, ALL_ACHIEVEMENTS } from "@/lib/achievements";
 import { SFX } from "@/lib/sounds";
+import { supabase } from "@/lib/supabase";
 
 // ── Floating letter particles ─────────────────────────────────────────────────
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -264,7 +265,7 @@ function GameDemo() {
 // ── Logo ──────────────────────────────────────────────────────────────────────
 function Logo() {
   const last = ["L", "A", "S", "T"];
-  const word = ["W", "O", "R", "D"];
+  const word = ["L", "E", "T", "T", "E", "R"];
   return (
     <div className="select-none flex flex-col items-center leading-none">
       <div className="flex items-end gap-0.5">
@@ -274,7 +275,7 @@ function Logo() {
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.06, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="text-[4.2rem] md:text-[5.5rem] font-black leading-none tracking-tighter"
+            className="text-[3.8rem] md:text-[5rem] font-black leading-none tracking-tighter"
             style={{
               fontFamily: "Orbitron, sans-serif",
               color: "#22d3ee",
@@ -295,7 +296,7 @@ function Logo() {
             initial={{ opacity: 0, y: 36, scaleY: 1.3 }}
             animate={{ opacity: 1, y: 0, scaleY: 1 }}
             transition={{ delay: 0.2 + i * 0.05, type: "spring", stiffness: 600, damping: 22 }}
-            className="text-[4.2rem] md:text-[5.5rem] font-black leading-none tracking-tighter inline-block"
+            className="text-[3.8rem] md:text-[5rem] font-black leading-none tracking-tighter inline-block"
             style={{
               fontFamily: "Orbitron, sans-serif",
               color: "#fbbf24",
@@ -312,6 +313,17 @@ function Logo() {
   );
 }
 
+// ── Avatar ────────────────────────────────────────────────────────────────────
+function Avatar({ pfp, size = 9 }: { pfp?: string; size?: number }) {
+  const cls = `w-${size} h-${size}`;
+  const defaultPfp = "https://t4.ftcdn.net/jpg/00/64/67/63/360_F_64676383_LdbmhiNM6Ypzb3FM4PPuFP9rHe7ri8Ju.jpg";
+  return (
+    <div className={`${cls} rounded-full overflow-hidden border-2 border-white/15 bg-black/40`}>
+        <img src={pfp || defaultPfp} alt="Profile" className="w-full h-full object-cover" />
+    </div>
+  );
+}
+
 // ── Badge ────────────────────────────────────────────────────────────────────
 function Badge({ type, size = 9 }: { type: string; size?: number }) {
   const cls = `w-${size} h-${size}`;
@@ -319,7 +331,7 @@ function Badge({ type, size = 9 }: { type: string; size?: number }) {
   return (
     <div className={`${cls} rounded-full bg-gradient-to-br ${isGuest ? 'from-slate-400/20 to-slate-600/20' : 'from-cyan-400/20 to-violet-500/20'} border-2 border-white/10 flex flex-col items-center justify-center overflow-hidden shadow-inner relative group`}>
       <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-      <span className="text-[10px] font-black font-mono text-white/40 tracking-tighter leading-none mb-0.5">{type.toUpperCase()}</span>
+      <span className="text-[10px] font-black font-sans text-white/40 tracking-tighter leading-none mb-0.5">{type.toUpperCase()}</span>
       <div className="w-4 h-0.5 bg-white/20 rounded-full" />
     </div>
   );
@@ -332,18 +344,42 @@ export default function Home() {
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState(user?.username ?? "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        if (user) setUser({ ...user, pfp: ev.target?.result as string });
+    };
+    reader.readAsDataURL(file);
+  }, [user, setUser]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = usernameInput.trim();
-    if (trimmed.length >= 2) {
-      setUser({
-        id: user?.id ?? crypto.randomUUID(),
-        username: trimmed.substring(0, 15),
-        badge: user?.badge ?? "Guest"
-      });
-      setShowUserModal(false);
+    if (trimmed.length < 2) return;
+
+    // Check uniqueness
+    const { data: existing, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', trimmed)
+        .not('id', 'eq', user?.id)
+        .maybeSingle();
+
+    if (existing) {
+        toast.error("Username already taken!");
+        return;
     }
+
+    setUser({
+      id: user?.id ?? crypto.randomUUID(),
+      username: trimmed.substring(0, 15),
+      badge: user?.badge ?? "Guest"
+    });
+    setShowUserModal(false);
   };
 
   const acceptedCount = friends.filter((f) => f.status === "accepted").length;
@@ -388,7 +424,7 @@ export default function Home() {
               className="p-1 rounded-full hover:bg-white/5 transition-colors"
               data-testid="button-user-profile"
             >
-              <Badge type={user?.badge ?? "Guest"} size={9} />
+              <Avatar pfp={user?.pfp} size={9} />
             </button>
 
             <button
@@ -404,134 +440,79 @@ export default function Home() {
         {/* ── Main content ─────────────────────────────────────────────── */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 gap-7">
 
+          <div className="absolute right-4 top-20 flex flex-col gap-2 items-end">
+            <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 px-4 py-2 rounded-full bg-gradient-to-r from-yellow-600/20 to-yellow-500/10 border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] backdrop-blur-md"
+            >
+                <div className="text-xl">💰</div>
+                <span className="font-mono font-bold text-lg text-yellow-500 tabular-nums">{scores.coins.toLocaleString()}</span>
+            </motion.div>
+          </div>
+
           <Logo />
 
           {/* Live game demo */}
           <GameDemo />
 
-          {/* Buttons */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.5 }}
-            className="flex flex-col w-full max-w-xs gap-3"
-          >
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setLocation("/modes")}
-              className="w-full h-[4.5rem] text-xl font-black tracking-wider text-black rounded-2xl flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: "linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%)",
-                boxShadow: "0 0 40px rgba(34,211,238,0.28), 0 4px 24px rgba(34,211,238,0.12)",
-              }}
-              data-testid="button-play"
-            >
-              <Play className="h-5 w-5 fill-current" />
-              PLAY
-            </motion.button>
-
-
-
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={() => { SFX.tap(); setLocation("/daily"); }}
-              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2 relative"
-              style={{
-                borderColor: dailyDone ? "rgba(52,211,153,0.4)" : "rgba(251,191,36,0.4)",
-                background:  dailyDone ? "rgba(52,211,153,0.07)" : "rgba(251,191,36,0.07)",
-                color:       dailyDone ? "#34d399" : "#fbbf24",
-              }}
-              data-testid="button-daily"
-            >
-              <Calendar className="h-4 w-4" />
-              DAILY CHALLENGE
-              {dailyDone ? (
-                <span className="text-[10px] font-mono ml-1">✓</span>
-              ) : (
-                <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-              )}
-              {dailyStreak > 0 && (
-                <span className="flex items-center gap-0.5 text-orange-400 text-xs font-bold ml-1">
-                  <Flame className="h-3 w-3 fill-orange-400" />{dailyStreak}
-                </span>
-              )}
-            </motion.button>
-
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={() => { SFX.tap(); setLocation("/friends"); }}
-              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
-              style={{ borderColor: "rgba(34,211,238,0.3)", background: "rgba(34,211,238,0.07)", color: "#22d3ee" }}
-            >
-              <Users className="h-4 w-4" />
-              FRIENDS
-              {(acceptedCount + incomingCount) > 0 && (
-                <span className="ml-1 text-xs bg-cyan-400 text-black px-1.5 py-0.5 rounded-full font-black">
-                  {acceptedCount + incomingCount}
-                </span>
-              )}
-            </motion.button>
-
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={() => { SFX.tap(); setShowAchievements(true); }}
-              className="w-full h-12 font-bold tracking-wider rounded-2xl border transition-all flex items-center justify-center gap-2"
-              style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.5)" }}
-            >
-              <Award className="h-4 w-4" />
-              ACHIEVEMENTS
-              <span className="text-xs font-mono ml-1">{unlockedCount}/{ALL_ACHIEVEMENTS.length}</span>
-            </motion.button>
-          </motion.div>
-
-          {/* Currency Bar */}
-          {user && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-4 px-5 py-2.5 rounded-2xl bg-black/40 border border-white/5 shadow-xl"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-[10px] font-black text-black shadow-[0_0_10px_rgba(234,179,8,0.5)]">
-                  C
-                </div>
-                <span className="font-mono font-bold text-sm text-yellow-500 tabular-nums">
-                  {scores.coins.toLocaleString()}
-                </span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center text-[10px] font-black text-black shadow-[0_0_10px_#22d3ee80]">
-                  R
-                </div>
-                <span className="font-mono font-bold text-sm text-cyan-400 tabular-nums">
-                  {scores.rankScore.toLocaleString()}
-                </span>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Stats replaced by global status */}
-          {user && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.7 }}
-              className="grid grid-cols-2 gap-3 w-full max-w-xs"
-            >
-              <div className="rounded-3xl border border-white/5 bg-black/20 p-4 text-center shadow-inner relative overflow-hidden group">
-                <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="text-2xl font-black font-mono text-yellow-500 tabular-nums relative z-10">{scores.coins.toLocaleString()}</div>
-                <div className="text-[10px] text-yellow-500/40 uppercase tracking-[0.2em] font-black relative z-10">Total Coins</div>
+          {/* Distributed Buttons */}
+          <div className="w-full max-w-lg flex items-center justify-between gap-4 mt-8 px-4">
+              <div className="flex flex-col gap-4">
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { SFX.tap(); setLocation("/friends"); }}
+                    className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400 shadow-lg"
+                  >
+                    <Users className="h-6 w-6" />
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { SFX.tap(); setShowAchievements(true); }}
+                    className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-yellow-400 shadow-lg"
+                  >
+                    <Award className="h-6 w-6" />
+                  </motion.button>
               </div>
 
-              <div className="rounded-3xl border border-white/5 bg-black/20 p-4 text-center shadow-inner relative overflow-hidden group">
-                <div className="absolute inset-0 bg-cyan-400/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="text-2xl font-black font-mono text-cyan-400 tabular-nums relative z-10">{scores.rankScore.toLocaleString()}</div>
-                <div className="text-[10px] text-cyan-400/40 uppercase tracking-[0.2em] font-black relative z-10">Global RP</div>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => setLocation("/modes")}
+                className="w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-cyan-400 to-blue-600 flex flex-col items-center justify-center gap-2 shadow-[0_0_50px_rgba(34,211,238,0.3)] border-4 border-white/20"
+              >
+                <Play className="h-10 w-10 fill-black text-black" />
+                <span className="text-black font-black text-xl tracking-tighter">PLAY</span>
+              </motion.button>
+
+              <div className="flex flex-col gap-4">
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { SFX.tap(); setLocation("/shop"); }}
+                    className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-yellow-500 shadow-lg relative group"
+                  >
+                    <ShoppingCart className="h-6 w-6" />
+                    <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { SFX.tap(); setLocation("/daily"); }}
+                    className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-orange-400 shadow-lg"
+                  >
+                    <Calendar className="h-6 w-6" />
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { SFX.tap(); setShowSettings(true); }}
+                    className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 shadow-lg"
+                  >
+                    <Settings className="h-6 w-6" />
+                  </motion.button>
               </div>
-            </motion.div>
-          )}
+          </div>
+
+          {/* Currency Bar Removed from here, moved to corner */}
+
+          {/* Stats replaced by global status removed, made simpler */}
         </div>
 
       </div>
@@ -569,23 +550,40 @@ export default function Home() {
               <form onSubmit={handleSave} className="flex flex-col gap-6">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 group-hover:border-cyan-400/50 transition-all duration-300 flex items-center justify-center bg-black/40 shadow-inner">
-                      <Badge type={user?.badge ?? "Guest"} size={16} />
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white/10 group-hover:border-cyan-400/50 transition-all duration-300 flex items-center justify-center bg-black/40 shadow-inner">
+                      <Avatar pfp={user?.pfp} size={24} />
                     </div>
                   </div>
+
+                  {/* Owned PFPs Selection */}
+                  {scores.ownedPfps.length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto py-2 w-full max-w-[280px] no-scrollbar">
+                          {scores.ownedPfps.map((url, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => user && setUser({ ...user, pfp: url })}
+                                className={`flex-shrink-0 w-12 h-12 rounded-full border-2 transition-all ${user?.pfp === url ? 'border-cyan-400 scale-110 shadow-lg' : 'border-white/10 opacity-50 hover:opacity-100'}`}
+                              >
+                                  <img src={url} className="w-full h-full object-cover rounded-full" />
+                              </button>
+                          ))}
+                      </div>
+                  )}
+
                   <div className="text-center">
-                    <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Active Badge</p>
+                    <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Owned Avatars</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest ml-1">Username</p>
+                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest ml-1">Username (Must be unique)</p>
                     <Input
                       value={usernameInput}
                       onChange={(e) => setUsernameInput(e.target.value)}
                       placeholder="Enter codename..."
-                      className="h-12 bg-white/5 border-white/10 rounded-xl font-mono text-lg focus:border-cyan-400/50 transition-colors"
+                      className="h-12 bg-white/5 border-white/10 rounded-xl font-sans text-lg focus:border-cyan-400/50 transition-colors"
                       maxLength={15}
                       autoFocus
                     />

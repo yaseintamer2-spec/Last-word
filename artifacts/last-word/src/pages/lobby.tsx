@@ -28,7 +28,7 @@ export default function Lobby() {
   const [view, setView]         = useState<LobbyView>("select");
   const [mode, setMode]         = useState<Mode | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
-  const [roundCount, setRoundCount] = useState<5|10>(5);
+  const [roundCount]            = useState(999); // Infinite rounds until elimination
   const [partyCode]             = useState(() => Math.random().toString(36).substring(2,8).toUpperCase());
   const [joinCode, setJoinCode] = useState("");
   const [searching, setSearching] = useState(false);
@@ -55,7 +55,7 @@ export default function Lobby() {
     timerRef.current = setInterval(() => setSearchTime((t) => t + 1), 1000);
   };
   const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
-  const myPlayer = (): LobbyPlayer[] => user ? [{ user_id: user.id, username: user.username, pfp: user.pfp, isYou: true, ping: ping ?? undefined }] : [];
+  const myPlayer = (): LobbyPlayer[] => user ? [{ user_id: user.id, username: user.username, badge: user.badge, isYou: true, ping: ping ?? undefined }] : [];
   const startLocalMatch = () => {
     if (!mode) return;
     mmRef.current?.cancel();
@@ -85,7 +85,8 @@ export default function Lobby() {
              current_round: 1,
              word: "START",
              hint: "Ready?",
-             phase: "focus"
+             phase: "focus",
+             status: "active"
            }).then();
         }
 
@@ -118,7 +119,8 @@ export default function Lobby() {
              current_round: 1,
              word: "START",
              hint: "Ready?",
-             phase: "focus"
+             phase: "focus",
+             status: "active"
            }).then();
         }
 
@@ -131,7 +133,7 @@ export default function Lobby() {
   const handleCancel = () => {
     mmRef.current?.cancel(); mmRef.current = null;
     setSearching(false); setMatchReady(false); stopTimer();
-    if (user) setPlayers([{ user_id: user.id, username: user.username, pfp: user.pfp, isYou: true }]);
+    if (user) setPlayers([{ user_id: user.id, username: user.username, badge: user.badge, isYou: true }]);
   };
 
   const copyCode = () => {
@@ -162,10 +164,10 @@ export default function Lobby() {
 
   return (
     <Layout>
-      <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 z-10">
+      <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 z-10 text-center py-8">
 
         {/* Header */}
-        <div className="flex items-center gap-3 pt-4 pb-5">
+        <div className="w-full flex items-center gap-3 pt-4 pb-5">
           <button onClick={() => { SFX.tap(); handleCancel(); view === "party" ? setView("select") : setLocation("/"); }}
             className="p-1.5 -ml-1.5 text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft className="h-5 w-5" />
@@ -188,7 +190,7 @@ export default function Lobby() {
               initial={{ height: 0, opacity: 0, y: -20 }}
               animate={{ height: "auto", opacity: 1, y: 0 }}
               exit={{ height: 0, opacity: 0, y: -20 }}
-              className="mb-6 overflow-hidden"
+              className="mb-6 overflow-hidden w-full max-w-sm mx-auto"
             >
               <div
                 className="rounded-3xl p-5 flex flex-col items-center gap-3 relative overflow-hidden"
@@ -237,7 +239,7 @@ export default function Lobby() {
 
           {/* Mode select */}
           {view === "select" && (
-            <motion.div key="select" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} className="flex flex-col gap-4 pb-4">
+            <motion.div key="select" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} className="flex flex-col gap-4 pb-4 w-full max-w-sm mx-auto">
               {MODES.map((m, idx) => (
                 <motion.button key={m.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}
                   onClick={() => handleSelectMode(m.id)}
@@ -259,7 +261,7 @@ export default function Lobby() {
 
           {/* Party / Lobby view */}
           {view === "party" && mode && currentMode && (
-            <motion.div key="party" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} className="flex flex-col gap-4 pb-6">
+            <motion.div key="party" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} className="flex flex-col gap-4 pb-6 w-full max-w-sm mx-auto">
 
               {/* Mode badge */}
               <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: currentMode.gradient, border: `1px solid ${currentMode.accent}25` }}>
@@ -305,19 +307,10 @@ export default function Lobby() {
                 </div>
               )}
 
-              {/* Round count */}
-              <div className="flex gap-2">
-                {([5, 10] as const).map((n) => (
-                  <button key={n} onClick={() => { SFX.tap(); setRoundCount(n); }}
-                    className="flex-1 py-2.5 rounded-2xl border text-sm font-bold font-mono transition-all"
-                    style={{
-                      background:  roundCount === n ? `${currentMode.accent}18` : "rgba(255,255,255,0.03)",
-                      borderColor: roundCount === n ? `${currentMode.accent}60` : "rgba(255,255,255,0.1)",
-                      color:       roundCount === n ? currentMode.accent : "rgba(255,255,255,0.4)",
-                    }}>
-                    {n} Rounds
-                  </button>
-                ))}
+              {/* Elimination Mode Info */}
+              <div className="px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 text-center">
+                  <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Elimination Mode</p>
+                  <p className="text-xs text-white/40 mt-0.5">Match ends when only one player remains.</p>
               </div>
 
               {/* Player slots */}

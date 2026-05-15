@@ -1,5 +1,7 @@
 import { useEffect, useRef, ReactNode } from 'react';
 import { AdMob, BannerAdOptions, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
+import { useLocation } from 'wouter';
+import { FallingGift } from './falling-gift';
 
 // ── Your AdMob banner ad unit ────────────────────────────────────────────────
 // Ad unit name : bottom app
@@ -43,22 +45,22 @@ function useAdMobBanner() {
 // ── Layout ────────────────────────────────────────────────────────────────────
 export function Layout({ children }: { children: ReactNode }) {
   useAdMobBanner();
+  const [location] = useLocation();
+  const isHome = location === "/";
 
   return (
     // h-[100dvh] locks the container to exactly the viewport height.
-    // This prevents the whole app from being pushed up.
-    // The AdMob banner sits OUTSIDE the app's WebView (it's a native overlay),
-    // so we add pb-[50px] so the bottom content isn't hidden behind it.
     <div className="h-[100dvh] flex flex-col text-foreground relative overflow-hidden dark">
-
       {/* Vignette overlay for depth */}
       <div className="vignette" />
+
+      {/* Gift Drops - Only on home page */}
+      {isHome && <FallingGift />}
 
       {/* Content area — scrollable, padded at bottom so nothing hides under the ad */}
       <div className="relative z-10 flex-1 flex flex-col pb-[50px] overflow-y-auto">
         {children}
       </div>
-
     </div>
   );
 }

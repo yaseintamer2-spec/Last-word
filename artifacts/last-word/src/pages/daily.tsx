@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Trophy, Flame, Share2 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { useGameData } from "@/lib/store";
+import { useGameData, getRank } from "@/lib/store";
 import { getDailyWord, getDailyState, saveDailyResult, isTodayCompleted, getDailyLeaderboard } from "@/lib/daily";
 import { tryUnlock } from "@/lib/achievements";
 import { SFX } from "@/lib/sounds";
@@ -14,7 +14,7 @@ type Phase = "INTRO" | "COUNTDOWN" | "TYPING" | "GUESSING" | "FEEDBACK" | "DONE"
 
 export default function DailyChallenge() {
   const [, setLocation] = useLocation();
-  const { user }        = useGameData();
+  const { user, scores } = useGameData();
   const daily           = getDailyWord();
   const already         = isTodayCompleted();
   const prevState       = getDailyState();
@@ -135,9 +135,9 @@ export default function DailyChallenge() {
   const handleShare = () => {
     const state = getDailyState();
     const rank = getRank(scores.rankScore);
-    const text  = `🎯 Last Word Daily Challenge\n📅 ${new Date().toLocaleDateString()}\n🔥 Streak: ${state?.streak ?? 0} days\n🏆 Rank: ${rank.name}\nPlay: lastword.app`;
+    const text  = `🎯 Last Letter Daily Challenge\n📅 ${new Date().toLocaleDateString()}\n🔥 Streak: ${state?.streak ?? 0} days\n🏆 Rank: ${rank.name}\nPlay: lastletter.app`;
     if (navigator.share) {
-      navigator.share({ title: "Last Word Daily", text }).catch(() => {});
+      navigator.share({ title: "Last Letter Daily", text }).catch(() => {});
     } else if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
     }

@@ -16,6 +16,7 @@ import Leaderboard from '@/pages/leaderboard';
 import Game from '@/pages/game';
 import Daily from '@/pages/daily';
 import ModeSelect from '@/pages/mode-select';
+import Shop from '@/pages/shop';
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/modes" component={ModeSelect} />
+      <Route path="/shop" component={Shop} />
       <Route path="/friends" component={Friends} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/leaderboard" component={Leaderboard} />
@@ -106,7 +108,7 @@ function OfflineScreen() {
               No Connection
             </h2>
             <p className="text-white/50 text-sm max-w-xs font-mono leading-relaxed">
-              Please connect to the internet to play Last Word.
+              Please connect to the internet to play Last Letter.
             </p>
           </div>
 
@@ -140,12 +142,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AnimatePresence>
-          {!loaded && <LoadingScreen onDone={() => setLoaded(true)} />}
-        </AnimatePresence>
-        <WouterRouter>
-          <Router />
-        </WouterRouter>
+        {!loaded ? (
+          <LoadingScreen key="loading" onDone={() => setLoaded(true)} />
+        ) : (
+          <div className="h-full w-full">
+              <Router />
+          </div>
+        )}
         <OfflineScreen />
         <Toaster />
       </TooltipProvider>
